@@ -12,7 +12,6 @@ tools/bilibili-mcp/qrcode_login.png
 mcp/servers.json
 memory/*
 !memory/.templates/
-!memory/gaoshi.md
 
 config/providers.json
 cache/
