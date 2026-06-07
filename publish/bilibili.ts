@@ -2,9 +2,9 @@ import type { Page } from "playwright";
 import { getPage, navigateTo } from "./browser-manager.ts";
 
 const CREATOR_URL = "https://member.bilibili.com";
-const DYNAMIC_URL = "https://member.bilibili.com/platform/upload/dynamic";
-const VIDEO_URL = "https://member.bilibili.com/platform/upload/video";
-const ARTICLE_URL = "https://member.bilibili.com/platform/article";
+const DYNAMIC_URL = "https://t.bilibili.com/";
+const VIDEO_URL = "https://member.bilibili.com/platform/upload/video/frame";
+const ARTICLE_URL = "https://member.bilibili.com/platform/upload/text/edit";
 
 const LIMITS = {
   image_text: { text: 2000, maxImages: 9, maxTags: 5 },

@@ -61,7 +61,21 @@ npm run dev
 
 > 前端开发用 `npm run dev:all`，额外启动 Vite 热更新在 `http://localhost:5173`。
 
-### 第四步：开始创作
+### 第四步：配置浏览器（发布功能必需）
+
+稿事通过 Edge 浏览器 CDP 协议自动发布内容到各平台。**Edge 必须以调试端口模式启动**：
+
+在 PowerShell 中运行（先关闭所有 Edge 窗口）：
+
+```powershell
+start msedge --remote-debugging-port=9222
+```
+
+之后始终从这个 Edge 窗口打开 `http://localhost:3919` 使用稿事。如果关闭了 Edge 需要重新运行上述命令。
+
+> 各平台创作者中心（抖音/B站/小红书）需在 Edge 中手动登录一次，后续 publish 自动复用登录 session。
+
+### 第五步：开始创作
 
 1. 浏览器打开 `http://localhost:3919`
 2. 左侧边栏 → **设置** → 勾选模型提供商，填入 API Key

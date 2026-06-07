@@ -23,7 +23,7 @@ async function isPortOpen(): Promise<boolean> {
 function launchEdge(): void {
   if (os.platform() === "win32") {
     exec(
-      `powershell -Command "Start-Process -FilePath 'msedge' -ArgumentList '--remote-debugging-port=${DEBUG_PORT}'"`,
+      `powershell -Command "Start-Process 'msedge' -ArgumentList '--remote-debugging-port=${DEBUG_PORT}', '--no-first-run', '--no-default-browser-check'"`,
       { windowsHide: true },
       (err) => { if (err) console.error("[browser-manager] launch failed:", err.message); }
     );

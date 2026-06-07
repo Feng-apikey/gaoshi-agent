@@ -67,6 +67,7 @@ export function buildToolsGuide(tools: ToolDef[]): string {
 
   lines.push("## 使用原则");
   lines.push("- 发布内容使用 publish 工具，platform 和 content_type 从草稿记录中获取");
+  lines.push("- publish 是串行操作、会占用浏览器，多平台分发必须逐个调用，一个完成再下一个");
   lines.push("- publish 发布到的是平台草稿箱，不是直接公开");
   lines.push("- 发布前建议通过 skill_load 加载对应平台的内容创作技能");
   lines.push("- 搜索网页获取实时信息，不要凭记忆编造");
