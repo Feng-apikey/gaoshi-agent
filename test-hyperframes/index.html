@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #000;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="10"
+      data-width="1920"
+      data-height="1080"
+      style="background: #0f172a; display: flex; align-items: center; justify-content: center;"
+    >
+      <div id="title" class="clip" data-start="0" data-duration="10" data-track-index="1"
+           style="font-size: 96px; font-weight: 700; color: #38bdf8; font-family: system-ui;">
+        稿事 × HyperFrames
+      </div>
+      <div id="sub" class="clip" data-start="1" data-duration="9" data-track-index="2"
+           style="font-size: 36px; color: #94a3b8; font-family: system-ui; margin-top: 140px;">
+        HTML 写视频，Agent 一键渲染
+      </div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      tl.from("#title", { opacity: 0, y: -60, duration: 0.8, ease: "power3.out" }, 0);
+      tl.from("#sub", { opacity: 0, y: 40, duration: 0.6, ease: "power2.out" }, 0.3);
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

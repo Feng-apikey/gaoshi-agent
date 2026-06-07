@@ -1,0 +1,28 @@
+{
+  "xiaohongshu": {
+    "type": "http",
+    "command": "tools/xiaohongshu-mcp-windows-amd64.exe",
+    "args": ["-headless=false"],
+    "port": 18060,
+    "url": "http://localhost:18060/mcp",
+    "env": {}
+  },
+  "bilibili": {
+    "type": "stdio",
+    "command": "python",
+    "args": ["tools/bilibili-mcp/mcp_server.py"],
+    "env": {}
+  },
+  "gaoshi": {
+    "type": "stdio",
+    "command": "node",
+    "args": ["./tools/gaoshi-mcp/dist/server.js"],
+    "env": {}
+  },
+  "douyin": {
+    "type": "stdio",
+    "command": "node",
+    "args": ["./tools/douyin-mcp/dist/server.js"],
+    "env": {}
+  }
+}

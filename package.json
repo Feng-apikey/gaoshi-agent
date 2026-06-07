@@ -1,0 +1,49 @@
+{
+  "name": "gaoshi-agent",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch api/index.ts",
+    "dev:all": "tsx scripts/dev-all.ts",
+    "setup": "tsx scripts/setup.ts",
+    "clean": "tsx scripts/clean.ts",
+    "preclean": "node -e \"const{rmSync,readdirSync,unlinkSync}=require('fs');const{join}=require('path');['dist','release'].forEach(d=>{try{rmSync(d,{recursive:true,force:true})}catch{}});try{const ad=join('api','static','assets');readdirSync(ad).forEach(f=>{if(f.startsWith('index-'))unlinkSync(join(ad,f))})}catch{};console.log('Clean done')\"",
+    "build": "npm run preclean && esbuild api/index.ts --bundle --platform=node --target=es2022 --format=esm --outfile=dist/server.js --external:better-sqlite3 --external:playwright --external:playwright-core --external:child_process --external:cross-spawn && npm run build:ui && npm run build:mcp",
+    "build:ui": "cd ui && npm install --silent && npx vue-tsc --noEmit && npx vite build && cd .. && node -e \"const{existsSync,mkdirSync,copyFileSync,readdirSync}=require('fs');const{join}=require('path');const sd='api/static';const dd='ui/dist';mkdirSync(sd,{recursive:true});const walk=(d,p='')=>{for(const e of readdirSync(d,{withFileTypes:true})){const r=join(p,e.name);if(e.isDirectory()){mkdirSync(join(sd,r),{recursive:true});walk(join(d,e.name),r)}else{copyFileSync(join(d,e.name),join(sd,r))}}};walk(dd);console.log('[build] ui copied to api/static')\"",
+    "build:mcp": "esbuild tools/douyin-mcp/server.ts --bundle --platform=node --target=es2022 --format=esm --outfile=tools/douyin-mcp/dist/server.js --external:playwright --external:playwright-core && esbuild tools/gaoshi-mcp/server.ts --bundle --platform=node --target=es2022 --format=esm --outfile=tools/gaoshi-mcp/dist/server.js --external:better-sqlite3 --external:playwright --external:playwright-core && esbuild tools/bilibili-mcp/server.ts --bundle --platform=node --target=es2022 --format=esm --outfile=tools/bilibili-mcp/dist/server.js --external:playwright --external:playwright-core && esbuild tools/xiaohongshu-mcp/server.ts --bundle --platform=node --target=es2022 --format=esm --outfile=tools/xiaohongshu-mcp/dist/server.js --external:playwright --external:playwright-core",
+    "build:manifests": "node --import tsx agent/tools/mcp-loader.ts --build",
+    "start": "node dist/server.js",
+    "typecheck": "npx vue-tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "^1.3.23",
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@hono/node-server": "^1.13.0",
+    "@langchain/langgraph": "^0.2.0",
+    "@modelcontextprotocol/sdk": "^1.6.0",
+    "ai": "^4.1.0",
+    "better-sqlite3": "^12.10.0",
+    "drizzle-orm": "^0.36.0",
+    "hono": "^4.6.0",
+    "image-size": "^2.0.2",
+    "nanoid": "^5.0.0",
+    "openai": "^4.73.0",
+    "playwright": "^1.49.0",
+    "sharp": "^0.34.5",
+    "zod": "^3.23.0",
+    "zod-to-json-schema": "^3.25.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.0.0",
+    "drizzle-kit": "^0.28.0",
+    "esbuild": "^0.28.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

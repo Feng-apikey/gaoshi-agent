@@ -1,0 +1,17 @@
+{
+  "小红书": {
+    "image_text": { "title": 20, "body": 1000, "maxImages": 9, "maxTags": 10, "aspectRatio": "3:4" },
+    "video": { "title": 20, "body": 1000, "maxTags": 10, "aspectRatio": "3:4" },
+    "article": { "title": 20, "body": 6000, "maxTags": 10 }
+  },
+  "抖音": {
+    "image_text": { "title": 20, "body": 1000, "maxImages": 35, "maxTags": 5, "aspectRatio": "3:4" },
+    "video": { "title": 30, "body": 500, "maxTags": 5, "aspectRatio": "9:16" },
+    "article": { "title": 30, "minBody": 300, "body": 8000, "abstract": 30, "maxTags": 5, "maxImages": 50 }
+  },
+  "B站": {
+    "video": { "title": 30, "body": 250, "maxTags": 10, "aspectRatio": "16:9" },
+    "dynamic": { "body": 1000, "maxImages": 9, "maxTags": 5 },
+    "article": { "title": 30, "minBody": 200, "body": 20000, "maxTags": 10, "maxImages": 100 }
+  }
+}

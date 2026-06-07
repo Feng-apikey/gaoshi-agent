@@ -1,0 +1,65 @@
+[
+  {
+    "id": "deepseek",
+    "name": "DeepSeek",
+    "baseURL": "https://api.deepseek.com/v1",
+    "models": [
+      { "name": "deepseek-v4-pro", "capabilities": ["text"], "contextWindow": 1000000 },
+      { "name": "deepseek-v4-flash", "capabilities": ["text"], "contextWindow": 1000000 }
+    ]
+  },
+  {
+    "id": "minimax",
+    "name": "MiniMax",
+    "baseURL": "https://api.minimax.chat/v1",
+    "models": [
+      { "name": "minimax-m3", "capabilities": ["text", "vision", "video"], "contextWindow": 1000000 },
+      { "name": "minimax-m2.7", "capabilities": ["text"], "contextWindow": 204800 },
+      { "name": "image-01", "capabilities": ["image"] },
+      { "name": "speech-2.8-hd", "capabilities": ["tts"] },
+      { "name": "music-2.6", "capabilities": ["music"] }
+    ]
+  },
+  {
+    "id": "zhipu",
+    "name": "智谱",
+    "baseURL": "https://open.bigmodel.cn/api/paas/v4",
+    "models": [
+      { "name": "glm-5.1", "capabilities": ["text"], "contextWindow": 200000 },
+      { "name": "glm-5-turbo", "capabilities": ["text"], "contextWindow": 200000 },
+      { "name": "glm-4.7", "capabilities": ["text"], "contextWindow": 200000 },
+      { "name": "GLM-5V-Turbo", "capabilities": ["vision", "video"], "contextWindow": 200000 },
+      { "name": "GLM-Image", "capabilities": ["image"] }
+    ]
+  },
+  {
+    "id": "moonshot",
+    "name": "Kimi",
+    "baseURL": "https://api.moonshot.cn/v1",
+    "models": [
+      { "name": "kimi-k2.6", "capabilities": ["text", "vision", "video"], "contextWindow": 262144 },
+      { "name": "kimi-k2.5", "capabilities": ["text", "vision"], "contextWindow": 256000 }
+    ]
+  },
+  {
+    "id": "xiaomi",
+    "name": "小米 MiMo",
+    "baseURL": "https://api.xiaomimimo.com/v1",
+    "headers": { "api-key": "{{apiKey}}" },
+    "models": [
+      { "name": "mimo-v2.5-pro", "capabilities": ["text", "vision"], "contextWindow": 1048576 }
+    ]
+  },
+  {
+    "id": "qwen",
+    "name": "通义千问",
+    "baseURL": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "note": "⚠ qwen-image-max（图片）和 qwen3-tts-instruct-flash（语音）不支持 OpenAI 兼容端点，需用 DashScope 原生 API",
+    "models": [
+      { "name": "qwen3.7-max", "capabilities": ["text"], "contextWindow": 1000000 },
+      { "name": "qwen3.7-plus", "capabilities": ["text", "vision", "video"], "contextWindow": 1000000 },
+      { "name": "qwen3.6-plus", "capabilities": ["text", "vision", "video"], "contextWindow": 1000000 },
+      { "name": "qwen3.5-plus", "capabilities": ["text", "vision", "video"], "contextWindow": 1000000 }
+    ]
+  }
+]
