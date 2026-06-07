@@ -162,6 +162,7 @@ export async function dismissPopups(page: Page): Promise<void> {
       if (await btn.isVisible({ timeout: 1500 })) {
         await humanClick(page, btn);
         await sleep(rand(300, 600));
+        break;
       }
     } catch {}
   }
