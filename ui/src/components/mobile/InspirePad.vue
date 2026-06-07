@@ -223,6 +223,18 @@ async function deleteQueueItem(id: number) {
 }
 
 // ── Init ──
+
+async function onVisibilityChange() {
+  if (document.visibilityState === 'visible') {
+    queue.value = await getAll() as QueueItem[]
+    const online = await checkOnline()
+    if (online && queue.value.length > 0) {
+      syncAll()
+    }
+    conn.value = online ? (queue.value.length > 0 ? 'syncing' : 'online') : 'offline'
+  }
+}
+
 onMounted(async () => {
   queue.value = await getAll() as QueueItem[]
   const ok = await checkOnline()
@@ -230,18 +242,6 @@ onMounted(async () => {
     await syncAll()
   }
   conn.value = ok ? (queue.value.length > 0 ? 'syncing' : 'online') : 'offline'
-
-  // Recheck on visibility change
-  async function onVisibilityChange() {
-    if (document.visibilityState === 'visible') {
-      queue.value = await getAll() as QueueItem[]
-      const online = await checkOnline()
-      if (online && queue.value.length > 0) {
-        syncAll()
-      }
-      conn.value = online ? (queue.value.length > 0 ? 'syncing' : 'online') : 'offline'
-    }
-  }
   document.addEventListener('visibilitychange', onVisibilityChange)
 })
 
