@@ -32,7 +32,7 @@ step("4/8  Install Playwright Chromium");
 run("npx playwright install chromium");
 
 // 4. Build MCP dist files
-step("5/8  Build MCP servers");
+step("5/8  Build gaoshi-mcp");
 run("npm run build:mcp");
 
 // 5. Build UI (so it's served from port 3919)
