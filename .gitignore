@@ -1,4 +1,4 @@
-﻿node_modules/
+node_modules/
 dist/
 release/
 *.log
@@ -11,6 +11,8 @@ tools/bilibili-mcp/bili_credential.json
 tools/bilibili-mcp/qrcode_login.png
 mcp/servers.json
 memory/*
+!memory/.templates/
+!memory/gaoshi.md
 
 config/providers.json
 cache/
@@ -18,6 +20,5 @@ cache/
 api/static/assets/
 tools/douyin-mcp/e2e-mcp-check.mjs
 tools/douyin-mcp/test-data.mjs
-!memory/.templates/
 
 *.tmp
