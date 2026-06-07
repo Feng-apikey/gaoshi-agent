@@ -11,7 +11,6 @@ tools/bilibili-mcp/bili_credential.json
 tools/bilibili-mcp/qrcode_login.png
 mcp/servers.json
 memory/*
-!memory/.templates/
 
 config/providers.json
 cache/

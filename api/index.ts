@@ -103,6 +103,16 @@ function getLocalIPs(): string[] {
 async function start() {
   console.log(`[gaoshi] Starting on port ${PORT}...`);
 
+  // Ensure memory files exist (copy from defaults on first run, never overwrite)
+  for (const file of ["gaoshi.md", "user-profile.md"]) {
+    const dest = path.join("memory", file);
+    const src = path.join("defaults", file);
+    if (!fs.existsSync(dest) && fs.existsSync(src)) {
+      fs.copyFileSync(src, dest);
+      console.log(`[gaoshi] Init memory: ${file}`);
+    }
+  }
+
   // Init provider store (must complete before first chat request)
   try {
     const store = await import("../agent/providers/store.ts");

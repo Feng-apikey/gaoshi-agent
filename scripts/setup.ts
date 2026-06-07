@@ -43,25 +43,20 @@ for (const d of ["data", "cache", "cache/mcp-manifests"]) {
 }
 console.log("  ✓");
 
-// 7. Init memory from templates (skip existing files to preserve user data)
-step("7/7  Init memory from templates");
-const templatesDir = path.join(ROOT, "memory", ".templates");
+// 7. Init memory from defaults (skip existing files to preserve user data)
+step("7/7  Init memory from defaults");
+const defaultsDir = path.join(ROOT, "defaults");
 const memoryDir = path.join(ROOT, "memory");
-if (fs.existsSync(templatesDir)) {
-  fs.mkdirSync(memoryDir, { recursive: true });
-  const templates = fs.readdirSync(templatesDir);
-  for (const file of templates) {
-    const src = path.join(templatesDir, file);
-    const dest = path.join(memoryDir, file);
-    if (fs.statSync(src).isFile() && !fs.existsSync(dest)) {
-      fs.copyFileSync(src, dest);
-      console.log(`  ${file} (new)`);
-    } else if (fs.existsSync(dest)) {
-      console.log(`  ${file} (exists, skip)`);
-    }
+fs.mkdirSync(memoryDir, { recursive: true });
+for (const file of fs.readdirSync(defaultsDir)) {
+  const src = path.join(defaultsDir, file);
+  const dest = path.join(memoryDir, file);
+  if (fs.statSync(src).isFile() && !fs.existsSync(dest)) {
+    fs.copyFileSync(src, dest);
+    console.log(`  ${file} (new)`);
+  } else if (fs.existsSync(dest)) {
+    console.log(`  ${file} (exists, skip)`);
   }
-} else {
-  warn("memory/.templates/ not found, skip memory init");
 }
 
 console.log(`\n${C.green}━━━━━━━━━━━━━━━━━━━━━━━━━${C.reset}`);
