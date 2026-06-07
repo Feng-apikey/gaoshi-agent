@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useOfflineSync } from '../../utils/offline-sync'
 import type { Inspiration } from '../../utils/offline-sync'
 
@@ -232,7 +232,7 @@ onMounted(async () => {
   conn.value = ok ? (queue.value.length > 0 ? 'syncing' : 'online') : 'offline'
 
   // Recheck on visibility change
-  document.addEventListener('visibilitychange', async () => {
+  async function onVisibilityChange() {
     if (document.visibilityState === 'visible') {
       queue.value = await getAll() as QueueItem[]
       const online = await checkOnline()
@@ -241,7 +241,12 @@ onMounted(async () => {
       }
       conn.value = online ? (queue.value.length > 0 ? 'syncing' : 'online') : 'offline'
     }
-  })
+  }
+  document.addEventListener('visibilitychange', onVisibilityChange)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('visibilitychange', onVisibilityChange)
 })
 
 // Detect iOS safe area

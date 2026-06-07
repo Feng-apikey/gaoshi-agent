@@ -126,7 +126,6 @@ async function publishVideo(draft: DraftData): Promise<{ success: boolean; messa
       uploadZone.click(),
     ]);
     await fileChooser.setFiles(draft.video);
-    // Wait for upload: look for preview or success indicator
     try {
       await page.waitForSelector('video, [class*="preview"], [class*="success"]', { timeout: 60000 });
     } catch {

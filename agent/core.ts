@@ -404,7 +404,7 @@ export function buildAgent(config: AgentConfig) {
       }
     }
   }
-  if (!maxTokens) maxTokens = 102_400;
+  if (!maxTokens) maxTokens = 131_072;
 
   const agentNode = createAgentNode(config.model, config.systemPrompt, config.tools, maxTokens, config.maxSteps ?? 1);
   const toolNode = createToolNode(config.tools);

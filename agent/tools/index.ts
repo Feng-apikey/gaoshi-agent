@@ -5,6 +5,7 @@ import { createFileTools } from "./file-tools.ts";
 import { createExecTool } from "./exec-tool.ts";
 import { createMemoryTool } from "./memory-tool.ts";
 import { createSkillTool } from "./skill-tool.ts";
+import { createPlatformTools } from "./platform-tools.ts";
 import { loadAllMCPTools } from "./mcp-loader.ts";
 
 export function createAgentTools(): ToolDef[] {
@@ -15,6 +16,7 @@ export function createAgentTools(): ToolDef[] {
     ...createExecTool(),
     ...createMemoryTool(),
     ...createSkillTool(),
+    ...createPlatformTools(),
   ];
 }
 
