@@ -83,21 +83,28 @@ export async function humanMouseMove(page: Page, toX: number, toY: number): Prom
 
 // ── Element interaction ──
 
-export async function humanMoveTo(page: Page, locator: Locator): Promise<void> {
+export async function humanMoveTo(page: Page, locator: Locator): Promise<{ x: number; y: number } | null> {
   try {
     const box = await locator.boundingBox();
     if (box) {
       const targetX = box.x + box.width * randFloat(0.3, 0.7);
       const targetY = box.y + box.height * randFloat(0.3, 0.7);
       await humanMouseMove(page, targetX, targetY);
+      // Return element-relative coordinates for click positioning
+      return { x: targetX - box.x, y: targetY - box.y };
     }
   } catch {}
+  return null;
 }
 
 export async function humanClick(page: Page, locator: Locator): Promise<void> {
-  await humanMoveTo(page, locator);
+  const pos = await humanMoveTo(page, locator);
   await sleep(rand(50, 200));
-  await locator.click();
+  if (pos) {
+    await locator.click({ position: pos });
+  } else {
+    await locator.click();
+  }
 }
 
 export async function humanPause(minMs = 200, maxMs = 1500): Promise<void> {
