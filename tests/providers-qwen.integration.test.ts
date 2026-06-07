@@ -19,7 +19,7 @@ async function chat(model: string, content: string, maxTokens = 50) {
 // Text models
 // ═══════════════════════════════════════════
 
-describe("qwen text models", () => {
+describe.skipIf(SKIP)("qwen text models", () => {
   it("qwen3.7-max returns valid response", async () => {
     const data = await chat("qwen3.7-max", "say hi", 20);
     expect(data.choices).toBeDefined();
@@ -56,7 +56,7 @@ describe("qwen text models", () => {
 // Vision models
 // ═══════════════════════════════════════════
 
-describe("qwen vision models", () => {
+describe.skipIf(SKIP)("qwen vision models", () => {
   it("qwen3.5-plus vision works", async () => {
     const resp = await fetch(`${BASE_URL}/chat/completions`, {
       method: "POST",
@@ -85,7 +85,7 @@ describe("qwen vision models", () => {
 // Error handling
 // ═══════════════════════════════════════════
 
-describe("qwen error handling", () => {
+describe.skipIf(SKIP)("qwen error handling", () => {
   it("returns error for invalid model", async () => {
     const data = await chat("nonexistent-model", "hi", 10);
     expect(data.error).toBeDefined();

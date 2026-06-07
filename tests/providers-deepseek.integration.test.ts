@@ -15,7 +15,7 @@ async function chat(model: string, content: string, maxTokens = 50) {
   return resp.json() as any;
 }
 
-describe("deepseek v4 models", () => {
+describe.skipIf(SKIP)("deepseek v4 models", () => {
   it("deepseek-v4-pro returns valid response", async () => {
     const data = await chat("deepseek-v4-pro", "say hi", 200);
     expect(data.choices).toBeDefined();
@@ -55,7 +55,7 @@ describe("deepseek v4 models", () => {
   }, 15_000);
 });
 
-describe("deepseek error handling", () => {
+describe.skipIf(SKIP)("deepseek error handling", () => {
   it("returns error for invalid model", async () => {
     const data = await chat("nonexistent-model", "hi", 10);
     expect(data.error).toBeDefined();

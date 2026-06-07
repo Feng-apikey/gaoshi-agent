@@ -28,7 +28,7 @@ async function generateImage(model: string, prompt: string) {
 // Text models
 // ═══════════════════════════════════════════
 
-describe("zhipu text models", () => {
+describe.skipIf(SKIP)("zhipu text models", () => {
   it("glm-4.7 returns valid response", async () => {
     const data = await chat("glm-4.7", "回复一个字：好", 20);
     expect(data.choices).toBeDefined();
@@ -80,7 +80,7 @@ describe("zhipu text models", () => {
 // Vision model
 // ═══════════════════════════════════════════
 
-describe("zhipu vision model", () => {
+describe.skipIf(SKIP)("zhipu vision model", () => {
   it("GLM-5V-Turbo returns valid response for text-only", async () => {
     const data = await chat("GLM-5V-Turbo", "say hi", 50);
     expect(data.choices).toBeDefined();
@@ -117,7 +117,7 @@ describe("zhipu vision model", () => {
 // Image generation
 // ═══════════════════════════════════════════
 
-describe("zhipu image generation", () => {
+describe.skipIf(SKIP)("zhipu image generation", () => {
   it("GLM-Image generates an image URL", async () => {
     const data = await generateImage("GLM-Image", "a red apple on white background");
     expect(data.data).toBeDefined();
@@ -144,7 +144,7 @@ describe("zhipu image generation", () => {
 // Error handling
 // ═══════════════════════════════════════════
 
-describe("zhipu error handling", () => {
+describe.skipIf(SKIP)("zhipu error handling", () => {
   it("returns error for invalid model", async () => {
     const data = await chat("nonexistent-model", "hi", 10);
     expect(data.error).toBeDefined();
@@ -165,7 +165,7 @@ describe("zhipu error handling", () => {
 // Provider config validation
 // ═══════════════════════════════════════════
 
-describe("zhipu provider preset", () => {
+describe.skipIf(SKIP)("zhipu provider preset", () => {
   it("all declared models exist in API", async () => {
     // Load preset and verify each model responds
     const models = ["glm-5.1", "glm-5-turbo", "glm-4.7", "GLM-5V-Turbo"];

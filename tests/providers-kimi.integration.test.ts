@@ -19,7 +19,7 @@ async function chat(model: string, content: string, maxTokens = 50) {
 // Text models
 // ═══════════════════════════════════════════
 
-describe("kimi text models", () => {
+describe.skipIf(SKIP)("kimi text models", () => {
   it("kimi-k2.6 returns valid response", async () => {
     const data = await chat("kimi-k2.6", "say hi", 200);
     expect(data.choices).toBeDefined();
@@ -60,7 +60,7 @@ describe("kimi text models", () => {
 // Vision model
 // ═══════════════════════════════════════════
 
-describe("kimi vision", () => {
+describe.skipIf(SKIP)("kimi vision", () => {
   it("kimi-k2.6 handles base64 image input", async () => {
     // Download a small test image and encode as base64
     const imgResp = await fetch("https://www.w3schools.com/html/pic_trulli.jpg");
@@ -95,7 +95,7 @@ describe("kimi vision", () => {
 // Error handling
 // ═══════════════════════════════════════════
 
-describe("kimi error handling", () => {
+describe.skipIf(SKIP)("kimi error handling", () => {
   it("returns error for invalid model", async () => {
     const data = await chat("nonexistent-model", "hi", 10);
     expect(data.error).toBeDefined();

@@ -15,8 +15,7 @@
     "sourceMap": false,
     "baseUrl": ".",
     "paths": { "@/*": ["./*"] },
-    "allowImportingTsExtensions": true,
-    "ignoreDeprecations": "6.0"
+    "allowImportingTsExtensions": true
   },
   "include": ["api/**/*.ts", "agent/**/*.ts", "publish/**/*.ts", "tools/**/*.ts", "mcp/**/*.ts", "schemas/**/*.ts", "storage/**/*.ts", "formatters/**/*.ts"]
 }
