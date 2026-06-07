@@ -3,7 +3,7 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": ["ES2022"],
+    "lib": ["ES2022", "DOM"],
     "outDir": "dist",
     "rootDir": ".",
     "strict": true,
@@ -14,7 +14,9 @@
     "declaration": false,
     "sourceMap": false,
     "baseUrl": ".",
-    "paths": { "@/*": ["./*"] }
+    "paths": { "@/*": ["./*"] },
+    "allowImportingTsExtensions": true,
+    "ignoreDeprecations": "6.0"
   },
-  "include": ["api/**/*.ts", "agent/**/*.ts", "schemas/**/*.ts", "storage/**/*.ts", "formatters/**/*.ts", "browser/**/*.ts"]
+  "include": ["api/**/*.ts", "agent/**/*.ts", "publish/**/*.ts", "tools/**/*.ts", "mcp/**/*.ts", "schemas/**/*.ts", "storage/**/*.ts", "formatters/**/*.ts"]
 }

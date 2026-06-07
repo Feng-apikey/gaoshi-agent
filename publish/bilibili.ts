@@ -20,6 +20,7 @@ export interface DraftData {
   images: string[];
   video: string;
   cover: string;
+  header: string;
   abstract: string;
 }
 
