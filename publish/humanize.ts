@@ -5,7 +5,7 @@ import type { Page, Locator } from "playwright";
 function rand(min: number, max: number): number { return Math.floor(Math.random() * (max - min + 1)) + min; }
 function randFloat(min: number, max: number): number { return Math.random() * (max - min) + min; }
 
-export const sleep = (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms));
+export const sleep = (ms: number): Promise<void> => new Promise(r => setTimeout(r, ms + rand(-Math.floor(ms * 0.15), Math.floor(ms * 0.25))));
 
 // ── Mouse position tracker ──
 
