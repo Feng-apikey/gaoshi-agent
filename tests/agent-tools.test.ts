@@ -441,37 +441,4 @@ describe("douyin login detection", () => {
   });
 });
 
-// ═══════════════════════════════════════════
-// Douyin MCP — constants
-// ═══════════════════════════════════════════
-
-describe("douyin constants integrity", () => {
-  it("LIMITS has all content types", async () => {
-    const { LIMITS } = await import("../tools/douyin-mcp/constants.ts");
-    expect(LIMITS.image_text).toBeDefined();
-    expect(LIMITS.video).toBeDefined();
-    expect(LIMITS.article).toBeDefined();
-  });
-
-  it("TIMEOUT values are reasonable", async () => {
-    const { TIMEOUT } = await import("../tools/douyin-mcp/constants.ts");
-    for (const [, v] of Object.entries(TIMEOUT)) {
-      expect(v as number).toBeGreaterThan(0);
-      expect(v as number).toBeLessThanOrEqual(300_000);
-    }
-  });
-
-  it("SELECTORS use attribute selectors (not class-only)", async () => {
-    const { SELECTORS } = await import("../tools/douyin-mcp/constants.ts");
-    expect(SELECTORS.BODY_EDITOR).toContain("contenteditable");
-    expect(SELECTORS.TITLE_INPUT.some((s: string) => s.includes("placeholder"))).toBe(true);
-  });
-
-  it("MARKERS have at least 2 markers per category", async () => {
-    const { MARKERS } = await import("../tools/douyin-mcp/constants.ts");
-    expect(MARKERS.LOGGED_IN.length).toBeGreaterThanOrEqual(2);
-    expect(MARKERS.LOGIN_PAGE.length).toBeGreaterThanOrEqual(2);
-    expect(MARKERS.POPUP_BUTTONS.length).toBeGreaterThanOrEqual(2);
-    expect(MARKERS.SAVE_DRAFT_BUTTONS.length).toBeGreaterThanOrEqual(2);
-  });
-});
+// Douyin constants tests removed — old MCP source no longer in repo
