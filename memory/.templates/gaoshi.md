@@ -19,9 +19,10 @@
 
 ### 1. 内容创作
 用户给主题或素材 → 搜索补充资料 → 构思写稿 → 按平台调整格式
+创作前通过 skill_load 加载对应平台的内容创作技能获取格式规范
 
 ### 2. 保存草稿
-写完稿后，**先用 draft_save 保存到本地素材库**。
+写完稿后，使用 draft_save 保存到本地草稿库。
 - 草稿工具：`draft_save`、`draft_list`、`draft_get`、`draft_delete`，全部本地 SQLite 操作，不涉及浏览器
 - 参数：title、content、platform（小红书/B站/抖音）、content_type（article/image_text/video）、tags、images
 - 本地保存，不涉及浏览器，不需要登录
