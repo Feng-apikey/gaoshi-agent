@@ -1,9 +1,14 @@
-import type { Page } from "playwright";
+import type { Page, Locator } from "playwright";
 import { getPage, navigateTo } from "./browser-manager.ts";
+import { sleep, humanClick, dismissPopups as closePopups } from "./humanize.ts";
 
 const CREATOR_URL = "https://creator.xiaohongshu.com";
+const DASHBOARD_URL = "https://creator.xiaohongshu.com/publish";
 const PUBLISH_URL = "https://creator.xiaohongshu.com/publish/publish";
-const ARTICLE_URL = "https://creator.xiaohongshu.com/publish/article";
+// XHS removed the dedicated /publish/article path. Long-form "article" drafts
+// in gaoshi become text-heavy notes on /publish/publish — same publish flow
+// as image_text, just with no images and a long body.
+const ARTICLE_URL = "https://creator.xiaohongshu.com/publish/publish";
 
 const LIMITS = {
   image_text: { title: 20, body: 1000, maxTags: 10, maxImages: 9 },
@@ -23,8 +28,6 @@ export interface DraftData {
   header: string;
 }
 
-function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
-
 async function pasteText(page: Page, text: string): Promise<void> {
   await page.evaluate((t: string) => {
     const ta = document.createElement("textarea");
@@ -40,53 +43,76 @@ async function pasteText(page: Page, text: string): Promise<void> {
   await sleep(100);
 }
 
-async function dismissPopups(page: Page): Promise<void> {
-  for (const txt of ["我知道了", "关闭", "取消", "跳过"]) {
+async function pickVisible(page: Page, factories: Array<() => Locator>, timeout = 3000): Promise<Locator | null> {
+  for (const factory of factories) {
     try {
-      const btn = page.locator(`text=${txt}`).first();
+      const loc = factory().first();
+      if (await loc.isVisible({ timeout })) return loc;
+    } catch {}
+  }
+  return null;
+}
+
+async function dismissPopups(page: Page): Promise<void> {
+  const candidates = ["我知道了", "关闭", "取消", "跳过"];
+  for (const name of candidates) {
+    try {
+      const btn = page.getByRole("button", { name }).first();
       if (await btn.isVisible({ timeout: 1500 })) { await btn.click(); await sleep(300); }
     } catch {}
   }
 }
 
 async function fillTitle(page: Page, title: string): Promise<void> {
-  const selectors = ['[placeholder*="标题"]', '[class*="title"] input', '[class*="title"] textarea'];
-  for (const sel of selectors) {
-    try {
-      const input = page.locator(sel).first();
-      if (!(await input.isVisible({ timeout: 3000 }))) continue;
-      await input.click();
-      await sleep(150);
-      await page.keyboard.press("Control+a");
-      await pasteText(page, title);
-      await sleep(300);
-      return;
-    } catch {}
-  }
+  const loc = await pickVisible(page, [
+    () => page.getByPlaceholder(/^[^]*(标题)/),
+  ]);
+  if (!loc) return;
+  await loc.click();
+  await sleep(150);
+  await page.keyboard.press("Control+a");
+  await pasteText(page, title);
+  await sleep(300);
 }
 
 async function fillBody(page: Page, body: string): Promise<void> {
-  const editor = page.locator('[contenteditable="true"]:visible').first();
-  if (!(await editor.isVisible({ timeout: 3000 }))) return;
-  await editor.click();
+  const loc = await pickVisible(page, [
+    () => page.getByRole("textbox", { name: /(正文|内容|正文输入|描述)/ }),
+    () => page.locator("[contenteditable='true']:visible").first(),
+  ]);
+  if (!loc) return;
+  await loc.click();
   await sleep(150);
   await page.keyboard.press("Control+a");
   await pasteText(page, body);
   await sleep(300);
 }
 
+/**
+ * XHS doesn't expose a dedicated tag input on the publish page — tags are
+ * typed inline ("#xxx") in the body, then a suggestion popover shows.
+ */
 async function addTags(page: Page, tags: string[], maxTags: number): Promise<void> {
   if (!tags?.length) return;
-  const editor = page.locator('[contenteditable="true"]:visible').first();
+  const ed = await pickVisible(page, [
+    () => page.getByRole("textbox", { name: /(正文|内容)/ }),
+    () => page.locator("[contenteditable='true']:visible").first(),
+  ]);
+  if (!ed) return;
   for (const tag of tags.slice(0, maxTags)) {
-    await editor.click();
+    await ed.click();
     await sleep(200);
     await pasteText(page, ` #${tag}`);
     await sleep(500);
-    try {
-      const suggestion = page.locator('[class*="suggest"]:visible, [class*="option"]:visible').first();
-      if (await suggestion.isVisible({ timeout: 1500 })) await suggestion.click();
-    } catch {}
+    // Suggestion popover — known-fragile, XHS's tag-suggest UI class name
+    // changes periodically. Inspect on a live page to refresh.
+    for (const sel of [
+      "[class*='suggest']:visible",
+      "[class*='option']:visible",
+    ]) {
+      const loc = page.locator(sel).first();
+      if (await loc.isVisible({ timeout: 1500 }).catch(() => false)) { await loc.click(); break; }
+    }
   }
 }
 
@@ -95,12 +121,12 @@ async function uploadFile(page: Page, filePath: string): Promise<void> {
   if (!filePath || !fs.existsSync(filePath)) return;
   const isVideo = /\.(mp4|avi|mov|mkv|flv|wmv)$/i.test(filePath);
   const hints = isVideo
-    ? ["可直接将视频文件拖入此区域", "可将视频拖拽到此处", "点击上传视频"]
-    : ["可直接将图片文件拖入此区域", "可将图片拖拽到此处", "点击上传图片"];
-  let uploadEl: any = null;
+    ? [/可将视频拖拽到此处|可直接将视频文件拖入|点击上传视频/]
+    : [/可将图片拖拽到此处|可直接将图片文件拖入|点击上传图片/];
+  let uploadEl: Locator | null = null;
   for (const hint of hints) {
-    const el = page.locator(`text=${hint}`).first();
-    if (await el.isVisible({ timeout: 2000 }).catch(() => false)) { uploadEl = el; break; }
+    const loc = page.getByText(hint).first();
+    if (await loc.isVisible({ timeout: 2000 }).catch(() => false)) { uploadEl = loc; break; }
   }
   if (!uploadEl) return;
   const [fileChooser] = await Promise.all([
@@ -112,9 +138,9 @@ async function uploadFile(page: Page, filePath: string): Promise<void> {
 }
 
 async function saveDraft(page: Page): Promise<void> {
-  for (const txt of ["存草稿", "保存草稿", "暂存"]) {
+  for (const name of [/存草稿/, /保存草稿/, /暂存/]) {
     try {
-      const btn = page.locator(`text=${txt}`).first();
+      const btn = page.getByRole("button", { name }).first();
       if (await btn.isVisible({ timeout: 2000 })) { await btn.click(); await sleep(2000); return; }
     } catch {}
   }
@@ -130,7 +156,7 @@ async function publishImageText(draft: DraftData): Promise<{ success: boolean; m
   if (page.url().includes("/login") || page.url().includes("/signin")) {
     return { success: false, message: "未登录小红书，请在 Edge 中打开 creator.xiaohongshu.com 手动登录后重试" };
   }
-  await dismissPopups(page);
+  await closePopups(page);
 
   // Upload images
   if (draft.images?.length) {
@@ -159,7 +185,7 @@ async function publishVideo(draft: DraftData): Promise<{ success: boolean; messa
   if (page.url().includes("/login") || page.url().includes("/signin")) {
     return { success: false, message: "未登录小红书，请在 Edge 中打开 creator.xiaohongshu.com 手动登录后重试" };
   }
-  await dismissPopups(page);
+  await closePopups(page);
 
   await uploadFile(page, draft.video);
   await fillTitle(page, draft.title.slice(0, LIMITS.video.title));
@@ -169,9 +195,11 @@ async function publishVideo(draft: DraftData): Promise<{ success: boolean; messa
   return { success: true, message: `视频已保存到小红书草稿箱：${draft.title}` };
 }
 
-// ── Article ──
+// ── Article (XHS has no dedicated article UI — long-form notes go via /publish) ──
 
 async function publishArticle(draft: DraftData): Promise<{ success: boolean; message: string }> {
+  // XHS removed /publish/article (404 as of 2026-06). Long-form "article" drafts
+  // become text-heavy notes on the same /publish page as image_text.
   await navigateTo("xiaohongshu", ARTICLE_URL);
   await sleep(3000);
   const page = await getPage("xiaohongshu");
@@ -179,30 +207,16 @@ async function publishArticle(draft: DraftData): Promise<{ success: boolean; mes
   if (page.url().includes("/login") || page.url().includes("/signin")) {
     return { success: false, message: "未登录小红书，请在 Edge 中打开 creator.xiaohongshu.com 手动登录后重试" };
   }
-  await dismissPopups(page);
+  await closePopups(page);
 
-  // Header image (upload before text)
-  if (draft.header) {
-    const fs = await import("node:fs");
-    if (fs.existsSync(draft.header)) {
-      const headerZone = page.locator('text=头图, text=文章头图, text=上传头图').first();
-      if (await headerZone.isVisible({ timeout: 2000 }).catch(() => false)) {
-        const [fc] = await Promise.all([
-          page.waitForEvent("filechooser", { timeout: 5000 }),
-          headerZone.click(),
-        ]);
-        await fc.setFiles(draft.header);
-        await sleep(3000);
-      }
-    }
-  }
-
-  // Cover
+  // Cover (single image, mapped to draft.cover) — XHS publish page supports a cover image
   if (draft.cover) {
     const fs = await import("node:fs");
     if (fs.existsSync(draft.cover)) {
-      const coverZone = page.locator('text=上传封面, text=封面, text=添加封面').first();
-      if (await coverZone.isVisible({ timeout: 2000 }).catch(() => false)) {
+      const coverZone = await pickVisible(page, [
+        () => page.getByText(/上传封面|添加封面|封面|头图/),
+      ], 2000);
+      if (coverZone) {
         const [fc] = await Promise.all([
           page.waitForEvent("filechooser", { timeout: 5000 }),
           coverZone.click(),
@@ -215,20 +229,21 @@ async function publishArticle(draft: DraftData): Promise<{ success: boolean; mes
 
   await fillTitle(page, draft.title.slice(0, LIMITS.article.title));
   await fillBody(page, draft.content.slice(0, LIMITS.article.body));
+
   if (draft.abstract) {
-    const inputs = page.locator('textarea, input[type="text"]');
-    const count = await inputs.count();
-    for (let i = 0; i < count; i++) {
-      const el = inputs.nth(i);
-      const ph = await el.getAttribute("placeholder").catch(() => "") || "";
-      if (ph.includes("摘要") || ph.includes("简介")) {
-        await el.click();
-        await pasteText(page, draft.abstract.slice(0, 60));
-        await sleep(300);
-        break;
-      }
+    // On the unified /publish page XHS doesn't show a separate abstract field
+    // — it's derived from the body. So prepend the abstract to the body content.
+    // (We tried to find a 摘要 placeholder above; if not found, we just skip.)
+    const abstractLoc = await pickVisible(page, [
+      () => page.getByPlaceholder(/^[^]*(摘要|简介)/),
+    ]);
+    if (abstractLoc) {
+      await abstractLoc.click();
+      await pasteText(page, draft.abstract.slice(0, 60));
+      await sleep(300);
     }
   }
+
   await addTags(page, draft.tags, LIMITS.article.maxTags);
   await saveDraft(page);
   return { success: true, message: `长文已保存到小红书草稿箱：${draft.title}` };
@@ -237,7 +252,10 @@ async function publishArticle(draft: DraftData): Promise<{ success: boolean; mes
 // ── Login check ──
 
 export async function checkLogin(): Promise<boolean> {
-  await navigateTo("xiaohongshu", CREATOR_URL);
+  // /publish is the dashboard with the sidebar showing 发布笔记 / 笔记管理 /
+  // 数据看板 — the original CREATOR_URL root redirects to /new/home which
+  // doesn't have those markers, giving false negatives.
+  await navigateTo("xiaohongshu", DASHBOARD_URL);
   await sleep(3000);
   const page = await getPage("xiaohongshu");
   const bodyText = await page.locator("body").innerText({ timeout: 8000 }).catch(() => "");

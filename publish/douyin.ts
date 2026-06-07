@@ -1,5 +1,6 @@
-import type { Page } from "playwright";
+import type { Page, Locator } from "playwright";
 import { getPage, navigateTo } from "./browser-manager.ts";
+import { sleep, humanClick, dismissPopups } from "./humanize.ts";
 
 const CREATOR_URL = "https://creator.douyin.com";
 const POST_IMAGE_URL = "https://creator.douyin.com/creator-micro/content/post/image";
@@ -26,7 +27,12 @@ export interface DraftData {
 
 // ── Helpers ──
 
-function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
+export async function findTitleInputPublic(page: Page): Promise<Locator | null> { return findTitleInput(page); }
+export async function findBodyEditorPublic(page: Page): Promise<Locator | null> { return findBodyEditor(page); }
+export async function findTagInputPublic(page: Page): Promise<Locator | null> { return findTagInput(page); }
+export async function findAbstractInputPublic(page: Page): Promise<Locator | null> { return findAbstractInput(page); }
+export async function clickSaveDraftPublic(page: Page): Promise<boolean> { return clickSaveDraft(page); }
+export async function dismissPopupsPublic(page: Page): Promise<void> { return dismissPopups(page); }
 
 async function pasteText(page: Page, text: string): Promise<void> {
   await page.evaluate((t: string) => {
@@ -43,15 +49,98 @@ async function pasteText(page: Page, text: string): Promise<void> {
   await sleep(100);
 }
 
-async function dismissPopups(page: Page): Promise<void> {
-  const buttons = ["我知道了", "知道了", "关闭", "跳过"];
-  for (const txt of buttons) {
+/**
+ * Pick the first visible locator from a chain of semantic candidates.
+ * Accepts either a Locator factory (function) or a list of Locator factories.
+ */
+async function pickVisible(page: Page, factories: Array<() => Locator>, timeout = 3000): Promise<Locator | null> {
+  for (const factory of factories) {
+    const loc = factory();
     try {
-      const btn = page.locator(`text=${txt}`).first();
-      if (await btn.isVisible({ timeout: 1500 })) {
-        await btn.click();
-        await sleep(300);
+      if (await loc.first().isVisible({ timeout })) return loc.first();
+    } catch {}
+  }
+  return null;
+}
+
+/**
+ * Find a title input. The title field on Douyin is a plain <input> with placeholder
+ * containing "标题". We use substring regex to tolerate wording variations like
+ * "请填写标题" / "视频标题" / "标题（20字以内）".
+ */
+async function findTitleInput(page: Page): Promise<Locator | null> {
+  return pickVisible(page, [
+    () => page.getByPlaceholder(/^[^]*(视频标题|填写标题|标题)/),
+  ]);
+}
+
+/**
+ * Find a description/body editor. Douyin's body editor is typically a
+ * <div contenteditable="true"> with an aria-label or data-placeholder hint.
+ * Fall back to the first visible contenteditable inside a posting form.
+ */
+async function findBodyEditor(page: Page): Promise<Locator | null> {
+  return pickVisible(page, [
+    () => page.getByRole("textbox", { name: /(正文|描述|内容|说点什么)/ }),
+    () => page.locator("[contenteditable='true']:visible").first(),
+  ], 2000);
+}
+
+/**
+ * Find a tag input. Douyin uses a dedicated <input placeholder="..."> for tag entry.
+ */
+async function findTagInput(page: Page): Promise<Locator | null> {
+  return pickVisible(page, [
+    () => page.getByPlaceholder(/^[^]*(话题|添加标签|标签)/),
+  ]);
+}
+
+/**
+ * Find the abstract (摘要) textarea on the article page.
+ */
+async function findAbstractInput(page: Page): Promise<Locator | null> {
+  return pickVisible(page, [
+    () => page.getByPlaceholder(/^[^]*(摘要|简介)/),
+  ]);
+}
+
+/**
+ * Find the "save draft" button. The exact text varies: 保存草稿 / 存草稿 / 暂存.
+ * getByRole is more robust than text= because it matches the button's accessible
+ * name (text content), and tolerates sibling whitespace.
+ */
+async function clickSaveDraft(page: Page): Promise<boolean> {
+  const candidates = [/保存草稿/, /存草稿/, /暂存/];
+  for (const name of candidates) {
+    try {
+      const btn = page.getByRole("button", { name }).first();
+      if (await btn.isVisible({ timeout: 2000 })) {
+        await humanClick(page, btn);
+        await sleep(2000);
+        return true;
       }
+    } catch {}
+  }
+  return false;
+}
+
+/**
+ * Tag suggestion popover (when the user types "#tag" the platform shows
+ * a list of suggestions to pick). The popover lives in a div that
+ * animates in; it has no stable semantic name. We click the first
+ * suggestion that becomes visible. This is a known-fragile area:
+ * if the platform changes the suggestion DOM, this will need a fresh
+ * inspection.
+ */
+async function pickFirstTagSuggestion(page: Page): Promise<void> {
+  const candidates = [
+    page.locator("[class*='suggest']:visible").first(),
+    page.locator("[class*='option']:visible").first(),
+    page.locator("[class*='topic']:visible").first(),
+  ];
+  for (const loc of candidates) {
+    try {
+      if (await loc.isVisible({ timeout: 1500 })) { await loc.click(); return; }
     } catch {}
   }
 }
@@ -65,47 +154,39 @@ async function publishImageText(draft: DraftData): Promise<{ success: boolean; m
   await dismissPopups(page);
 
   // Title
-  const titleInput = page.locator('input[placeholder*="标题"], [contenteditable="true"]').first();
-  if (await titleInput.isVisible({ timeout: 5000 })) {
+  const titleInput = await findTitleInput(page);
+  if (titleInput) {
     await titleInput.click();
     await pasteText(page, draft.title.slice(0, LIMITS.image_text.title));
     await sleep(300);
   }
 
   // Body
-  const editor = page.locator('[contenteditable="true"]').first();
-  if (await editor.isVisible({ timeout: 3000 })) {
+  const editor = await findBodyEditor(page);
+  if (editor) {
     await editor.click();
     await pasteText(page, draft.content.slice(0, LIMITS.image_text.body));
     await sleep(300);
   }
 
-  // Tags
+  // Tags — pasted into the body editor (Douyin's image-text page doesn't expose
+  // a dedicated tag input; tags are inline "#xxx" inside the body).
   if (draft.tags?.length) {
     for (const tag of draft.tags.slice(0, LIMITS.image_text.maxTags)) {
-      await editor.click();
-      await pasteText(page, ` #${tag}`);
-      await sleep(500);
-      try {
-        const suggestion = page.locator('[class*="suggest"], [class*="option"]').first();
-        if (await suggestion.isVisible({ timeout: 1500 })) await suggestion.click();
-      } catch {}
+      const ed = await findBodyEditor(page);
+      if (ed) {
+        await ed.click();
+        await pasteText(page, ` #${tag}`);
+        await sleep(500);
+        await pickFirstTagSuggestion(page);
+      }
     }
   }
 
   // Save draft
-  await sleep(500);
-  for (const txt of ["保存草稿", "存草稿", "暂存"]) {
-    try {
-      const btn = page.locator(`text=${txt}`).first();
-      if (await btn.isVisible({ timeout: 2000 })) {
-        await btn.click();
-        await sleep(2000);
-        return { success: true, message: `已保存到抖音草稿箱：${draft.title}` };
-      }
-    } catch {}
+  if (await clickSaveDraft(page)) {
+    return { success: true, message: `已保存到抖音草稿箱：${draft.title}` };
   }
-
   return { success: false, message: "找不到保存草稿按钮" };
 }
 
@@ -119,8 +200,10 @@ async function publishVideo(draft: DraftData): Promise<{ success: boolean; messa
   const page = await getPage("douyin");
   await dismissPopups(page);
 
-  // Upload video
-  const uploadZone = page.locator('text=点击上传, text=上传视频').first();
+  // Upload video — the upload zone is a clickable area with text like
+  // "点击上传" or "上传视频". getByText matches the visible text exactly;
+  // we use a regex to be tolerant.
+  const uploadZone = page.getByText(/点击上传|上传视频/).first();
   if (await uploadZone.isVisible({ timeout: 5000 })) {
     const [fileChooser] = await Promise.all([
       page.waitForEvent("filechooser", { timeout: 5000 }),
@@ -128,7 +211,8 @@ async function publishVideo(draft: DraftData): Promise<{ success: boolean; messa
     ]);
     await fileChooser.setFiles(draft.video);
     try {
-      await page.waitForSelector('video, [class*="preview"], [class*="success"]', { timeout: 60000 });
+      // Wait for the upload to complete — preview <video> or success marker appears.
+      await page.waitForSelector("video, [class*='preview'], [class*='success']", { timeout: 60000 });
     } catch {
       return { success: false, message: "视频上传超时" };
     }
@@ -136,46 +220,36 @@ async function publishVideo(draft: DraftData): Promise<{ success: boolean; messa
   }
 
   // Title
-  const titleInput = page.locator('input[placeholder*="标题"]').first();
-  if (await titleInput.isVisible({ timeout: 3000 })) {
+  const titleInput = await findTitleInput(page);
+  if (titleInput) {
     await titleInput.click();
     await pasteText(page, draft.title.slice(0, LIMITS.video.title));
     await sleep(300);
   }
 
-  // Description
-  const descInput = page.locator('textarea[placeholder*="描述"], [placeholder*="简介"]').first();
-  if (await descInput.isVisible({ timeout: 3000 })) {
+  // Description (video page uses textarea with placeholder "描述" or "简介")
+  const descInput = await pickVisible(page, [
+    () => page.getByPlaceholder(/^[^]*(视频描述|描述|简介)/),
+  ]);
+  if (descInput) {
     await descInput.click();
     await pasteText(page, draft.content.slice(0, LIMITS.video.body));
     await sleep(300);
   }
 
-  // Tags
+  // Tags — dedicated <input> on the video page
   if (draft.tags?.length) {
-    for (const tag of draft.tags.slice(0, LIMITS.video.maxTags)) {
-      const tagInput = page.locator('[placeholder*="标签"]').first();
-      if (await tagInput.isVisible({ timeout: 2000 })) {
-        await tagInput.click();
-        await pasteText(page, tag);
-        await sleep(500);
-      }
+    const tagInput = await findTagInput(page);
+    if (tagInput) {
+      await tagInput.click();
+      await pasteText(page, draft.tags.slice(0, LIMITS.video.maxTags).join(", "));
+      await sleep(500);
     }
   }
 
-  // Save draft
-  await sleep(500);
-  for (const txt of ["保存草稿", "存草稿"]) {
-    try {
-      const btn = page.locator(`text=${txt}`).first();
-      if (await btn.isVisible({ timeout: 2000 })) {
-        await btn.click();
-        await sleep(2000);
-        return { success: true, message: `视频已保存到抖音草稿箱：${draft.title}` };
-      }
-    } catch {}
+  if (await clickSaveDraft(page)) {
+    return { success: true, message: `视频已保存到抖音草稿箱：${draft.title}` };
   }
-
   return { success: false, message: "保存失败" };
 }
 
@@ -188,55 +262,45 @@ async function publishArticle(draft: DraftData): Promise<{ success: boolean; mes
   await dismissPopups(page);
 
   // Title
-  const titleInput = page.locator('input[placeholder*="标题"]').first();
-  if (await titleInput.isVisible({ timeout: 5000 })) {
+  const titleInput = await findTitleInput(page);
+  if (titleInput) {
     await titleInput.click();
     await pasteText(page, draft.title.slice(0, LIMITS.article.title));
     await sleep(300);
   }
 
-  // Abstract (optional, short description)
-  const abstractInput = page.locator('[placeholder*="摘要"], textarea[placeholder*="简介"]').first();
-  if (await abstractInput.isVisible({ timeout: 2000 })) {
+  // Abstract (short blurb shown in feeds)
+  const abstractInput = await findAbstractInput(page);
+  if (abstractInput) {
     await abstractInput.click();
     await pasteText(page, (draft.abstract || draft.content.slice(0, 30)).slice(0, LIMITS.article.abstract));
     await sleep(300);
   }
 
   // Body
-  const editor = page.locator('[contenteditable="true"]').first();
-  if (await editor.isVisible({ timeout: 3000 })) {
+  const editor = await findBodyEditor(page);
+  if (editor) {
     await editor.click();
     await pasteText(page, draft.content.slice(0, LIMITS.article.body));
     await sleep(300);
   }
 
-  // Tags
+  // Tags — inline in body
   if (draft.tags?.length) {
     for (const tag of draft.tags.slice(0, LIMITS.article.maxTags)) {
-      await editor.click();
-      await pasteText(page, ` #${tag}`);
-      await sleep(500);
-      try {
-        const suggestion = page.locator('[class*="suggest"], [class*="option"]').first();
-        if (await suggestion.isVisible({ timeout: 1500 })) await suggestion.click();
-      } catch {}
+      const ed = await findBodyEditor(page);
+      if (ed) {
+        await ed.click();
+        await pasteText(page, ` #${tag}`);
+        await sleep(500);
+        await pickFirstTagSuggestion(page);
+      }
     }
   }
 
-  // Save draft
-  await sleep(500);
-  for (const txt of ["保存草稿", "存草稿", "暂存"]) {
-    try {
-      const btn = page.locator(`text=${txt}`).first();
-      if (await btn.isVisible({ timeout: 2000 })) {
-        await btn.click();
-        await sleep(2000);
-        return { success: true, message: `长文已保存到抖音草稿箱：${draft.title}` };
-      }
-    } catch {}
+  if (await clickSaveDraft(page)) {
+    return { success: true, message: `长文已保存到抖音草稿箱：${draft.title}` };
   }
-
   return { success: false, message: "找不到保存草稿按钮" };
 }
 

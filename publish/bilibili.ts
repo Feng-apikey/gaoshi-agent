@@ -1,5 +1,6 @@
-import type { Page } from "playwright";
+import type { Page, Locator } from "playwright";
 import { getPage, navigateTo } from "./browser-manager.ts";
+import { sleep, humanClick, dismissPopups as closePopups } from "./humanize.ts";
 
 const CREATOR_URL = "https://member.bilibili.com";
 const DYNAMIC_URL = "https://t.bilibili.com/";
@@ -24,8 +25,6 @@ export interface DraftData {
   abstract: string;
 }
 
-function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
-
 async function pasteText(page: Page, text: string): Promise<void> {
   await page.evaluate((t: string) => {
     const ta = document.createElement("textarea");
@@ -41,84 +40,98 @@ async function pasteText(page: Page, text: string): Promise<void> {
   await sleep(100);
 }
 
-async function dismissPopups(page: Page): Promise<void> {
-  for (const txt of ["我知道了", "知道了", "关闭", "跳过"]) {
+async function pickVisible(page: Page, factories: Array<() => Locator>, timeout = 3000): Promise<Locator | null> {
+  for (const factory of factories) {
     try {
-      const btn = page.locator(`text=${txt}`).first();
-      if (await btn.isVisible({ timeout: 1500 })) { await btn.click(); await sleep(300); }
+      const loc = factory().first();
+      if (await loc.isVisible({ timeout })) return loc;
     } catch {}
   }
+  return null;
 }
 
+/**
+ * Find the title input. On Bilibili, the title field placeholder contains
+ * "标题" (article) or "视频标题" (video upload).
+ */
 async function fillTitle(page: Page, title: string): Promise<void> {
-  const selectors = ['input[placeholder*="标题"]', 'input[placeholder*="视频标题"]', 'textarea[placeholder*="标题"]'];
-  for (const sel of selectors) {
-    try {
-      const input = page.locator(sel).first();
-      if (!(await input.isVisible({ timeout: 3000 }))) continue;
-      await input.click();
-      await sleep(150);
-      await page.keyboard.press("Control+a");
-      await pasteText(page, title);
-      await sleep(300);
-      return;
-    } catch {}
-  }
+  const loc = await pickVisible(page, [
+    () => page.getByPlaceholder(/^[^]*(视频标题|标题)/),
+  ]);
+  if (!loc) return;
+  await loc.click();
+  await sleep(150);
+  await page.keyboard.press("Control+a");
+  await pasteText(page, title);
+  await sleep(300);
 }
 
+/**
+ * Find the rich-text body editor (article page). Bilibili's article editor
+ * is a contenteditable div, often without a placeholder. Fall back to
+ * a plain <textarea> with placeholder hint.
+ */
 async function fillBody(page: Page, body: string): Promise<void> {
-  const editor = page.locator('[contenteditable="true"]:visible').first();
-  if (!(await editor.isVisible({ timeout: 3000 }))) return;
-  await editor.click();
+  const loc = await pickVisible(page, [
+    () => page.getByRole("textbox", { name: /(正文|内容|文章正文)/ }),
+    () => page.locator("[contenteditable='true']:visible").first(),
+  ]);
+  if (!loc) return;
+  await loc.click();
   await sleep(150);
   await page.keyboard.press("Control+a");
   await pasteText(page, body);
   await sleep(300);
 }
 
+/**
+ * Find the text input/editor used for short posts (动态 / 视频描述).
+ * Bilibili's dynamic composer on t.bilibili.com is an embedded widget with
+ * placeholder "有什么想和大家分享的?". The video upload form uses a textarea
+ * with placeholder "说点什么" / "视频描述".
+ */
 async function fillTextarea(page: Page, text: string): Promise<void> {
-  const selectors = ['textarea[placeholder*="说点什么"]', 'textarea[placeholder*="发表动态"]', '[contenteditable="true"]:visible'];
-  for (const sel of selectors) {
-    try {
-      const el = page.locator(sel).first();
-      if (!(await el.isVisible({ timeout: 3000 }))) continue;
-      await el.click();
-      await sleep(150);
-      await pasteText(page, text);
-      await sleep(300);
-      return;
-    } catch {}
-  }
+  const loc = await pickVisible(page, [
+    () => page.getByPlaceholder(/有什么想和大家分享|说点什么|发表动态|视频描述|描述/),
+    () => page.locator("[contenteditable='true']:visible").first(),
+  ]);
+  if (!loc) return;
+  await loc.click();
+  await sleep(150);
+  await page.keyboard.press("Control+a");
+  await pasteText(page, text);
+  await sleep(300);
 }
 
 async function addTags(page: Page, tags: string[], maxTags: number): Promise<void> {
   if (!tags?.length) return;
   const tagStr = tags.slice(0, maxTags).join(", ");
-  const selectors = ['input[placeholder*="标签"]', 'input[placeholder*="添加标签"]'];
-  for (const sel of selectors) {
-    try {
-      const input = page.locator(sel).first();
-      if (!(await input.isVisible({ timeout: 2000 }))) continue;
-      await input.click();
-      await sleep(200);
-      await input.fill(tagStr);
-      await sleep(500);
-      return;
-    } catch {}
-  }
+  const loc = await pickVisible(page, [
+    () => page.getByPlaceholder(/^[^]*(添加标签|标签)/),
+  ], 2000);
+  if (!loc) return;
+  await loc.click();
+  await sleep(200);
+  await loc.fill(tagStr);
+  await sleep(500);
 }
 
+/**
+ * Click the upload zone. The zone is a clickable container that opens
+ * a file picker. Visible text is hint text like "可将视频文件拖入此区域".
+ * getByText matches the visible label.
+ */
 async function uploadFile(page: Page, filePath: string): Promise<void> {
   const fs = await import("node:fs");
   if (!filePath || !fs.existsSync(filePath)) return;
   const isVideo = /\.(mp4|avi|mov|mkv|flv|wmv)$/i.test(filePath);
   const hints = isVideo
-    ? ["可直接将视频文件拖入此区域", "点击上传视频", "选择视频文件"]
-    : ["可直接将图片文件拖入此区域", "点击上传图片", "选择图片文件"];
-  let uploadEl: any = null;
+    ? [/可将视频文件拖入|点击上传视频|选择视频/]
+    : [/可将图片文件拖入|点击上传图片|选择图片/];
+  let uploadEl: Locator | null = null;
   for (const hint of hints) {
-    const el = page.locator(`text=${hint}`).first();
-    if (await el.isVisible({ timeout: 2000 }).catch(() => false)) { uploadEl = el; break; }
+    const loc = page.getByText(hint).first();
+    if (await loc.isVisible({ timeout: 2000 }).catch(() => false)) { uploadEl = loc; break; }
   }
   if (!uploadEl) return;
   const [fileChooser] = await Promise.all([
@@ -129,17 +142,22 @@ async function uploadFile(page: Page, filePath: string): Promise<void> {
   await sleep(isVideo ? 17000 : 5000);
 }
 
+/**
+ * Click submit. Bilibili's creator flow has "投稿" (video) / "发布" (dynamic)
+ * / "立即发布" / "提交审核", then a "保存草稿" fallback.
+ */
 async function clickSubmit(page: Page): Promise<void> {
-  for (const txt of ["发布", "提交审核", "立即发布", "投稿"]) {
+  const primary = [/^投稿$/, /^发布$/, /^立即发布$/, /^提交审核$/];
+  for (const name of primary) {
     try {
-      const btn = page.locator(`text=${txt}`).first();
+      const btn = page.getByRole("button", { name }).first();
       if (await btn.isVisible({ timeout: 2000 })) { await btn.click(); await sleep(3000); return; }
     } catch {}
   }
-  // Fallback: try save draft
-  for (const txt of ["保存草稿", "存草稿"]) {
+  // Fallback: save draft
+  for (const name of [/保存草稿/, /存草稿/]) {
     try {
-      const btn = page.locator(`text=${txt}`).first();
+      const btn = page.getByRole("button", { name }).first();
       if (await btn.isVisible({ timeout: 2000 })) { await btn.click(); await sleep(2000); return; }
     } catch {}
   }
@@ -155,7 +173,7 @@ async function publishImageText(draft: DraftData): Promise<{ success: boolean; m
   if (page.url().includes("/login") || page.url().includes("/signin")) {
     return { success: false, message: "未登录B站，请在 Edge 中打开 member.bilibili.com 手动登录后重试" };
   }
-  await dismissPopups(page);
+  await closePopups(page);
 
   await fillTextarea(page, draft.content.slice(0, LIMITS.image_text.text));
 
@@ -182,7 +200,7 @@ async function publishVideo(draft: DraftData): Promise<{ success: boolean; messa
   if (page.url().includes("/login") || page.url().includes("/signin")) {
     return { success: false, message: "未登录B站，请在 Edge 中打开 member.bilibili.com 手动登录后重试" };
   }
-  await dismissPopups(page);
+  await closePopups(page);
 
   await uploadFile(page, draft.video);
   await fillTitle(page, draft.title.slice(0, LIMITS.video.title));
@@ -205,7 +223,7 @@ async function publishArticle(draft: DraftData): Promise<{ success: boolean; mes
   if (page.url().includes("/login") || page.url().includes("/signin")) {
     return { success: false, message: "未登录B站，请在 Edge 中打开 member.bilibili.com 手动登录后重试" };
   }
-  await dismissPopups(page);
+  await closePopups(page);
 
   await fillTitle(page, draft.title.slice(0, LIMITS.article.title));
   await fillBody(page, draft.content.slice(0, LIMITS.article.body));
