@@ -27,26 +27,30 @@ git clone https://github.com/Feng-apikey/gaoshi-agent.git
 cd gaoshi-agent
 ```
 
-### 第二步：一键安装
+### 第二步：安装依赖
+
+```bash
+npm install
+```
+
+### 第三步：一键初始化
 
 ```bash
 npm run setup
 ```
 
-这个命令自动完成以下 8 步：
-
+自动完成：
 1. 检查 Node.js 版本
-2. 安装根目录依赖
-3. 安装 UI 依赖（Vue 3 + Vite）
-4. 下载 Playwright Chromium（浏览器自动化用）
-5. 编译 MCP 服务（稿事内置工具）
-6. 构建前端
-7. 初始化运行时目录（`data/`、`cache/`）
-8. 从模板初始化记忆文件
+2. 安装 UI 依赖（Vue 3 + Vite）
+3. 下载 Playwright Chromium（浏览器自动化用）
+4. 编译 gaoshi-mcp
+5. 构建前端
+6. 初始化运行时目录（`data/`、`cache/`）
+7. 从模板初始化记忆文件
 
 全程约 3-5 分钟，视网络情况而定。
 
-### 第三步：启动
+### 第四步：启动
 
 ```bash
 npm run dev
@@ -61,7 +65,7 @@ npm run dev
 
 > 前端开发用 `npm run dev:all`，额外启动 Vite 热更新在 `http://localhost:5173`。
 
-### 第四步：配置浏览器（发布功能必需）
+### 第五步：配置浏览器（发布功能必需）
 
 稿事通过 Edge 浏览器 CDP 协议自动发布内容到各平台。**Edge 必须以调试端口模式启动**：
 
@@ -75,7 +79,7 @@ start msedge --remote-debugging-port=9222
 
 > 各平台创作者中心（抖音/B站/小红书）需在 Edge 中手动登录一次，后续 publish 自动复用登录 session。
 
-### 第五步：开始创作
+### 第六步：开始创作
 
 1. 浏览器打开 `http://localhost:3919`
 2. 左侧边栏 → **设置** → 勾选模型提供商，填入 API Key

@@ -15,39 +15,36 @@ function run(cmd: string, cwd?: string) {
 }
 
 // 1. Check Node.js
-step("1/8  Check Node.js");
+step("1/7  Check Node.js");
 const ver = process.version.match(/v(\d+)/)?.[1] ?? "0";
 if (parseInt(ver) < 18) die(`Node.js >= 18 required. Current: ${process.version}`);
 console.log(`  Node.js ${process.version} ✓`);
 
-// 2. Install dependencies
-step("2/8  Install dependencies (root)");
-run("npm install");
-
-step("3/8  Install dependencies (UI)");
+// 2. Install UI dependencies
+step("2/7  Install dependencies (UI)");
 run("npm install", path.join(ROOT, "ui"));
 
 // 3. Install Playwright Chromium
-step("4/8  Install Playwright Chromium");
+step("3/7  Install Playwright Chromium");
 run("npx playwright install chromium");
 
-// 4. Build MCP dist files
-step("5/8  Build gaoshi-mcp");
+// 4. Build MCP
+step("4/7  Build gaoshi-mcp");
 run("npm run build:mcp");
 
-// 5. Build UI (so it's served from port 3919)
-step("6/8  Build UI");
+// 5. Build UI
+step("5/7  Build UI");
 run("npm run build:ui");
 
 // 6. Init runtime directories
-step("7/8  Init runtime directories");
+step("6/7  Init runtime directories");
 for (const d of ["data", "cache", "cache/mcp-manifests"]) {
   fs.mkdirSync(path.join(ROOT, d), { recursive: true });
 }
 console.log("  ✓");
 
 // 7. Init memory from templates (skip existing files to preserve user data)
-step("8/8  Init memory from templates");
+step("7/7  Init memory from templates");
 const templatesDir = path.join(ROOT, "memory", ".templates");
 const memoryDir = path.join(ROOT, "memory");
 if (fs.existsSync(templatesDir)) {
