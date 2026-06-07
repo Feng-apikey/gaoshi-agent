@@ -17,5 +17,5 @@
     "paths": { "@/*": ["./*"] },
     "allowImportingTsExtensions": true
   },
-  "include": ["api/**/*.ts", "agent/**/*.ts", "publish/**/*.ts", "tools/**/*.ts", "mcp/**/*.ts", "schemas/**/*.ts", "storage/**/*.ts", "formatters/**/*.ts"]
+  "include": ["api/**/*.ts", "agent/**/*.ts", "publish/**/*.ts", "tools/gaoshi-mcp/**/*.ts", "mcp/**/*.ts", "schemas/**/*.ts", "storage/**/*.ts", "formatters/**/*.ts"]
 }
