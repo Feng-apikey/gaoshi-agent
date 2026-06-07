@@ -38,22 +38,12 @@ async function pickVisible(page: Page, factories: Array<() => Locator>, timeout 
   return null;
 }
 
-async function dismissPopups(page: Page): Promise<void> {
-  const candidates = ["我知道了", "关闭", "取消", "跳过"];
-  for (const name of candidates) {
-    try {
-      const btn = page.getByRole("button", { name }).first();
-      if (await btn.isVisible({ timeout: 1500 })) { await btn.click(); await sleep(300); }
-    } catch {}
-  }
-}
-
 async function fillTitle(page: Page, title: string): Promise<void> {
   const loc = await pickVisible(page, [
     () => page.getByPlaceholder(/^[^]*(标题)/),
   ]);
   if (!loc) return;
-  await loc.click();
+  await humanClick(page, loc);
   await sleep(150);
   await page.keyboard.press("Control+a");
   await pasteText(page, title);
@@ -66,7 +56,7 @@ async function fillBody(page: Page, body: string): Promise<void> {
     () => page.locator("[contenteditable='true']:visible").first(),
   ]);
   if (!loc) return;
-  await loc.click();
+  await humanClick(page, loc);
   await sleep(150);
   await page.keyboard.press("Control+a");
   await pasteText(page, body);
@@ -85,7 +75,7 @@ async function addTags(page: Page, tags: string[], maxTags: number): Promise<voi
   ]);
   if (!ed) return;
   for (const tag of tags.slice(0, maxTags)) {
-    await ed.click();
+    await humanClick(page, ed);
     await sleep(200);
     await pasteText(page, ` #${tag}`);
     await sleep(500);
@@ -96,7 +86,7 @@ async function addTags(page: Page, tags: string[], maxTags: number): Promise<voi
       "[class*='option']:visible",
     ]) {
       const loc = page.locator(sel).first();
-      if (await loc.isVisible({ timeout: 1500 }).catch(() => false)) { await loc.click(); break; }
+      if (await loc.isVisible({ timeout: 1500 }).catch(() => false)) { await humanClick(page, loc); break; }
     }
   }
 }
@@ -126,7 +116,7 @@ async function saveDraft(page: Page): Promise<void> {
   for (const name of [/存草稿/, /保存草稿/, /暂存/]) {
     try {
       const btn = page.getByRole("button", { name }).first();
-      if (await btn.isVisible({ timeout: 2000 })) { await btn.click(); await sleep(2000); return; }
+      if (await btn.isVisible({ timeout: 2000 })) { await humanClick(page, btn); await sleep(2000); return; }
     } catch {}
   }
 }
@@ -223,7 +213,7 @@ async function publishArticle(draft: DraftData): Promise<{ success: boolean; mes
       () => page.getByPlaceholder(/^[^]*(摘要|简介)/),
     ]);
     if (abstractLoc) {
-      await abstractLoc.click();
+      await humanClick(page, abstractLoc);
       await pasteText(page, draft.abstract.slice(0, 60));
       await sleep(300);
     }

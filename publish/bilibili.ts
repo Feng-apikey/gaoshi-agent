@@ -44,7 +44,7 @@ async function fillTitle(page: Page, title: string): Promise<void> {
     () => page.getByPlaceholder(/^[^]*(视频标题|标题)/),
   ]);
   if (!loc) return;
-  await loc.click();
+  await humanClick(page, loc);
   await sleep(150);
   await page.keyboard.press("Control+a");
   await pasteText(page, title);
@@ -62,7 +62,7 @@ async function fillBody(page: Page, body: string): Promise<void> {
     () => page.locator("[contenteditable='true']:visible").first(),
   ]);
   if (!loc) return;
-  await loc.click();
+  await humanClick(page, loc);
   await sleep(150);
   await page.keyboard.press("Control+a");
   await pasteText(page, body);
@@ -81,7 +81,7 @@ async function fillTextarea(page: Page, text: string): Promise<void> {
     () => page.locator("[contenteditable='true']:visible").first(),
   ]);
   if (!loc) return;
-  await loc.click();
+  await humanClick(page, loc);
   await sleep(150);
   await page.keyboard.press("Control+a");
   await pasteText(page, text);
@@ -95,7 +95,7 @@ async function addTags(page: Page, tags: string[], maxTags: number): Promise<voi
     () => page.getByPlaceholder(/^[^]*(添加标签|标签)/),
   ], 2000);
   if (!loc) return;
-  await loc.click();
+  await humanClick(page, loc);
   await sleep(200);
   await loc.fill(tagStr);
   await sleep(500);
@@ -136,14 +136,14 @@ async function clickSubmit(page: Page): Promise<void> {
   for (const name of primary) {
     try {
       const btn = page.getByRole("button", { name }).first();
-      if (await btn.isVisible({ timeout: 2000 })) { await btn.click(); await sleep(3000); return; }
+      if (await btn.isVisible({ timeout: 2000 })) { await humanClick(page, btn); await sleep(3000); return; }
     } catch {}
   }
   // Fallback: save draft
   for (const name of [/保存草稿/, /存草稿/]) {
     try {
       const btn = page.getByRole("button", { name }).first();
-      if (await btn.isVisible({ timeout: 2000 })) { await btn.click(); await sleep(2000); return; }
+      if (await btn.isVisible({ timeout: 2000 })) { await humanClick(page, btn); await sleep(2000); return; }
     } catch {}
   }
 }
