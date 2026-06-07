@@ -1,6 +1,6 @@
 import type { Page, Locator } from "playwright";
 import { getPage, navigateTo } from "./browser-manager.ts";
-import { sleep, humanClick, dismissPopups as closePopups } from "./humanize.ts";
+import { sleep, humanClick, pasteText, dismissPopups as closePopups } from "./humanize.ts";
 
 const CREATOR_URL = "https://member.bilibili.com";
 const DYNAMIC_URL = "https://t.bilibili.com/";
@@ -23,21 +23,6 @@ export interface DraftData {
   cover: string;
   header: string;
   abstract: string;
-}
-
-async function pasteText(page: Page, text: string): Promise<void> {
-  await page.evaluate((t: string) => {
-    const ta = document.createElement("textarea");
-    ta.style.cssText = "position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0";
-    ta.value = t;
-    document.body.appendChild(ta);
-    ta.focus();
-    ta.select();
-    document.execCommand("copy");
-    document.body.removeChild(ta);
-  }, text);
-  await page.keyboard.press("Control+v");
-  await sleep(100);
 }
 
 async function pickVisible(page: Page, factories: Array<() => Locator>, timeout = 3000): Promise<Locator | null> {

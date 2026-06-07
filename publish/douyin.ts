@@ -1,6 +1,6 @@
 import type { Page, Locator } from "playwright";
 import { getPage, navigateTo } from "./browser-manager.ts";
-import { sleep, humanClick, dismissPopups } from "./humanize.ts";
+import { sleep, humanClick, pasteText, dismissPopups } from "./humanize.ts";
 
 const CREATOR_URL = "https://creator.douyin.com";
 const POST_IMAGE_URL = "https://creator.douyin.com/creator-micro/content/post/image";
@@ -26,28 +26,6 @@ export interface DraftData {
 }
 
 // ── Helpers ──
-
-export async function findTitleInputPublic(page: Page): Promise<Locator | null> { return findTitleInput(page); }
-export async function findBodyEditorPublic(page: Page): Promise<Locator | null> { return findBodyEditor(page); }
-export async function findTagInputPublic(page: Page): Promise<Locator | null> { return findTagInput(page); }
-export async function findAbstractInputPublic(page: Page): Promise<Locator | null> { return findAbstractInput(page); }
-export async function clickSaveDraftPublic(page: Page): Promise<boolean> { return clickSaveDraft(page); }
-export async function dismissPopupsPublic(page: Page): Promise<void> { return dismissPopups(page); }
-
-async function pasteText(page: Page, text: string): Promise<void> {
-  await page.evaluate((t: string) => {
-    const ta = document.createElement("textarea");
-    ta.style.cssText = "position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0";
-    ta.value = t;
-    document.body.appendChild(ta);
-    ta.focus();
-    ta.select();
-    document.execCommand("copy");
-    document.body.removeChild(ta);
-  }, text);
-  await page.keyboard.press("Control+v");
-  await sleep(100);
-}
 
 /**
  * Pick the first visible locator from a chain of semantic candidates.
@@ -140,7 +118,7 @@ async function pickFirstTagSuggestion(page: Page): Promise<void> {
   ];
   for (const loc of candidates) {
     try {
-      if (await loc.isVisible({ timeout: 1500 })) { await loc.click(); return; }
+      if (await loc.isVisible({ timeout: 1500 })) { await humanClick(page, loc); return; }
     } catch {}
   }
 }
@@ -156,7 +134,7 @@ async function publishImageText(draft: DraftData): Promise<{ success: boolean; m
   // Title
   const titleInput = await findTitleInput(page);
   if (titleInput) {
-    await titleInput.click();
+    await humanClick(page, titleInput);
     await pasteText(page, draft.title.slice(0, LIMITS.image_text.title));
     await sleep(300);
   }
@@ -164,7 +142,7 @@ async function publishImageText(draft: DraftData): Promise<{ success: boolean; m
   // Body
   const editor = await findBodyEditor(page);
   if (editor) {
-    await editor.click();
+    await humanClick(page, editor);
     await pasteText(page, draft.content.slice(0, LIMITS.image_text.body));
     await sleep(300);
   }
@@ -175,7 +153,7 @@ async function publishImageText(draft: DraftData): Promise<{ success: boolean; m
     for (const tag of draft.tags.slice(0, LIMITS.image_text.maxTags)) {
       const ed = await findBodyEditor(page);
       if (ed) {
-        await ed.click();
+        await humanClick(page, ed);
         await pasteText(page, ` #${tag}`);
         await sleep(500);
         await pickFirstTagSuggestion(page);
@@ -222,7 +200,7 @@ async function publishVideo(draft: DraftData): Promise<{ success: boolean; messa
   // Title
   const titleInput = await findTitleInput(page);
   if (titleInput) {
-    await titleInput.click();
+    await humanClick(page, titleInput);
     await pasteText(page, draft.title.slice(0, LIMITS.video.title));
     await sleep(300);
   }
@@ -232,7 +210,7 @@ async function publishVideo(draft: DraftData): Promise<{ success: boolean; messa
     () => page.getByPlaceholder(/^[^]*(视频描述|描述|简介)/),
   ]);
   if (descInput) {
-    await descInput.click();
+    await humanClick(page, descInput);
     await pasteText(page, draft.content.slice(0, LIMITS.video.body));
     await sleep(300);
   }
@@ -241,7 +219,7 @@ async function publishVideo(draft: DraftData): Promise<{ success: boolean; messa
   if (draft.tags?.length) {
     const tagInput = await findTagInput(page);
     if (tagInput) {
-      await tagInput.click();
+      await humanClick(page, tagInput);
       await pasteText(page, draft.tags.slice(0, LIMITS.video.maxTags).join(", "));
       await sleep(500);
     }
@@ -264,7 +242,7 @@ async function publishArticle(draft: DraftData): Promise<{ success: boolean; mes
   // Title
   const titleInput = await findTitleInput(page);
   if (titleInput) {
-    await titleInput.click();
+    await humanClick(page, titleInput);
     await pasteText(page, draft.title.slice(0, LIMITS.article.title));
     await sleep(300);
   }
@@ -272,7 +250,7 @@ async function publishArticle(draft: DraftData): Promise<{ success: boolean; mes
   // Abstract (short blurb shown in feeds)
   const abstractInput = await findAbstractInput(page);
   if (abstractInput) {
-    await abstractInput.click();
+    await humanClick(page, abstractInput);
     await pasteText(page, (draft.abstract || draft.content.slice(0, 30)).slice(0, LIMITS.article.abstract));
     await sleep(300);
   }
@@ -280,7 +258,7 @@ async function publishArticle(draft: DraftData): Promise<{ success: boolean; mes
   // Body
   const editor = await findBodyEditor(page);
   if (editor) {
-    await editor.click();
+    await humanClick(page, editor);
     await pasteText(page, draft.content.slice(0, LIMITS.article.body));
     await sleep(300);
   }
@@ -290,7 +268,7 @@ async function publishArticle(draft: DraftData): Promise<{ success: boolean; mes
     for (const tag of draft.tags.slice(0, LIMITS.article.maxTags)) {
       const ed = await findBodyEditor(page);
       if (ed) {
-        await ed.click();
+        await humanClick(page, ed);
         await pasteText(page, ` #${tag}`);
         await sleep(500);
         await pickFirstTagSuggestion(page);
