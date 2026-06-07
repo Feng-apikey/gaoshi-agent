@@ -153,7 +153,7 @@ const POPUP_TEXTS = ["我知道了", "知道了", "关闭", "跳过", "取消"];
 export async function dismissPopups(page: Page): Promise<void> {
   for (const txt of POPUP_TEXTS) {
     try {
-      const btn = page.getByRole("button", { name: txt });
+      const btn = page.getByRole("button", { name: txt }).first();
       if (await btn.isVisible({ timeout: 1500 })) {
         await humanClick(page, btn);
         await sleep(rand(300, 600));
