@@ -87,6 +87,9 @@ export async function getPage(key: string): Promise<Page> {
 }
 
 export async function navigateTo(key: string, url: string): Promise<Page> {
+  // Release cached page to avoid beforeunload hang when the previous publish
+  // left the page in a "draft saved" state that intercepts navigation.
+  await releasePage(key);
   const page = await getPage(key);
   await page.goto(url, { waitUntil: "domcontentloaded" });
   return page;
