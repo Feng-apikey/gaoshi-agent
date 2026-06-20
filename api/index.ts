@@ -12,6 +12,7 @@ import { uploadRouter } from "./routes/upload.ts";
 import { providersRouter } from "./routes/providers.ts";
 import { routingRouter } from "./routes/routing.ts";
 import { settingsRouter } from "./routes/settings.ts";
+import { toLimitsJSON } from "../schemas/platform-schema.ts";
 
 const app = new Hono();
 
@@ -29,12 +30,7 @@ app.get("/api/health", (c) => c.json({ status: "ok", version: "0.2.0" }));
 
 // ── Platform limits ──
 app.get("/api/limits", (c) => {
-  try {
-    const raw = fs.readFileSync(path.join(process.cwd(), "config", "platform-limits.json"), "utf-8");
-    return c.json(JSON.parse(raw));
-  } catch {
-    return c.json({});
-  }
+  return c.json(toLimitsJSON());
 });
 
 // ── Routes ──

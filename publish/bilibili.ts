@@ -2,18 +2,13 @@ import type { Page } from "playwright";
 import { getPage, navigateTo } from "./browser-manager.ts";
 import { sleep, pickVisible, isOnLoginPage, humanReadPause, humanEnter } from "./humanize.ts";
 import { fillField, clickButton, uploadFile } from "./helpers.ts";
+import { getLimits } from "../schemas/platform-schema.ts";
 import type { DraftData } from "./types.ts";
 
 const CREATOR_URL = "https://member.bilibili.com";
 const DYNAMIC_URL = "https://t.bilibili.com/";
 const VIDEO_URL = "https://member.bilibili.com/platform/upload/video/frame";
 const ARTICLE_URL = "https://member.bilibili.com/platform/upload/text/edit";
-
-const LIMITS = {
-  image_text: { title: 20, text: 1000, maxImages: 18 },  // 动态
-  video: { title: 80, desc: 2000, maxTags: 10 },
-  article: { title: 30, body: 100000, maxImages: 50 },
-} as const;
 
 // ── Element fillers ──
 
@@ -38,27 +33,15 @@ async function fillTextarea(page: Page, text: string): Promise<void> {
   if (loc) await fillField(page, loc, text);
 }
 
-async function addTags(page: Page, tags: string[], maxTags: number): Promise<void> {
-  if (!tags?.length) return;
-  const loc = await pickVisible(page, [
-    () => page.getByPlaceholder(/(添加标签|标签)/),
-  ], 2000);
-  if (!loc) return;
-  for (const tag of tags.slice(0, maxTags)) {
-    await fillField(page, loc, tag);
-    await page.keyboard.press("Enter");
-    await sleep(500);
-  }
-}
-
 async function doSubmit(page: Page): Promise<boolean> {
   await humanReadPause();
   return await clickButton(page, [/保存草稿/, /存草稿/]);
 }
 
-// ── Image Text (Dynamic) ──
+// ── Dynamic (image_text — B站动态 = 图文) ──
 
-async function publishImageText(draft: DraftData): Promise<{ success: boolean; message: string }> {
+async function publishDynamic(draft: DraftData): Promise<{ success: boolean; message: string }> {
+  const L = getLimits("B站", "dynamic")!;
   await navigateTo("bilibili", DYNAMIC_URL);
   await sleep(3000);
   const page = await getPage("bilibili");
@@ -68,11 +51,11 @@ async function publishImageText(draft: DraftData): Promise<{ success: boolean; m
   }
   await humanEnter(page);
 
-  await fillTitle(page, draft.title.slice(0, LIMITS.image_text.title));
-  await fillTextarea(page, draft.content.slice(0, LIMITS.image_text.text));
+  if (L.title !== undefined) await fillTitle(page, draft.title.slice(0, L.title));
+  if (L.body !== undefined) await fillTextarea(page, draft.content.slice(0, L.body));
 
-  if (draft.images?.length) {
-    for (const img of draft.images.slice(0, LIMITS.image_text.maxImages)) {
+  if (draft.images?.length && L.maxImages !== undefined) {
+    for (const img of draft.images.slice(0, L.maxImages)) {
       await uploadFile(page, img);
       await sleep(3000);
     }
@@ -88,6 +71,7 @@ async function publishImageText(draft: DraftData): Promise<{ success: boolean; m
 
 async function publishVideo(draft: DraftData): Promise<{ success: boolean; message: string }> {
   if (!draft.video) return { success: false, message: "草稿缺少视频文件" };
+  const L = getLimits("B站", "video")!;
 
   await navigateTo("bilibili", VIDEO_URL);
   await sleep(3000);
@@ -99,12 +83,11 @@ async function publishVideo(draft: DraftData): Promise<{ success: boolean; messa
   await humanEnter(page);
 
   await uploadFile(page, draft.video);
-  await fillTitle(page, draft.title.slice(0, LIMITS.video.title));
+  if (L.title !== undefined) await fillTitle(page, draft.title.slice(0, L.title));
 
-  if (draft.content) {
-    await fillTextarea(page, draft.content.slice(0, LIMITS.video.desc));
+  if (draft.content && L.body !== undefined) {
+    await fillTextarea(page, draft.content.slice(0, L.body));
   }
-  await addTags(page, draft.tags, LIMITS.video.maxTags);
 
   if (!(await doSubmit(page))) {
     return { success: false, message: "找不到保存草稿按钮" };
@@ -115,6 +98,7 @@ async function publishVideo(draft: DraftData): Promise<{ success: boolean; messa
 // ── Article ──
 
 async function publishArticle(draft: DraftData): Promise<{ success: boolean; message: string }> {
+  const L = getLimits("B站", "article")!;
   await navigateTo("bilibili", ARTICLE_URL);
   await sleep(3000);
   const page = await getPage("bilibili");
@@ -124,11 +108,11 @@ async function publishArticle(draft: DraftData): Promise<{ success: boolean; mes
   }
   await humanEnter(page);
 
-  await fillTitle(page, draft.title.slice(0, LIMITS.article.title));
-  await fillBody(page, draft.content.slice(0, LIMITS.article.body));
+  if (L.title !== undefined) await fillTitle(page, draft.title.slice(0, L.title));
+  if (L.body !== undefined) await fillBody(page, draft.content.slice(0, L.body));
 
-  if (draft.images?.length) {
-    for (const img of draft.images.slice(0, LIMITS.article.maxImages)) {
+  if (draft.images?.length && L.maxImages !== undefined) {
+    for (const img of draft.images.slice(0, L.maxImages)) {
       await uploadFile(page, img);
       await sleep(3000);
     }
@@ -152,9 +136,12 @@ export async function checkLogin(): Promise<boolean> {
 }
 
 // ── Dispatch ──
-
+// B站 dispatch 用 schema key "dynamic" 不用 "image_text" —— 草稿/MCP 工具的
+// content_type 都按 schema 走，AI 调 dynamic 才会匹配。但同时保留 image_text alias
+// 防止旧调用方直接传 image_text（发布前 schema 改之前的代码）。
 export const dispatch: Record<string, (draft: DraftData) => Promise<{ success: boolean; message: string }>> = {
-  image_text: publishImageText,
+  dynamic: publishDynamic,
+  image_text: publishDynamic,   // alias for legacy callers
   video: publishVideo,
   article: publishArticle,
 };

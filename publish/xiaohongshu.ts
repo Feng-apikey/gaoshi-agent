@@ -2,17 +2,12 @@ import type { Page, Locator } from "playwright";
 import { getPage, navigateTo } from "./browser-manager.ts";
 import { sleep, pickVisible, isOnLoginPage, humanReadPause, humanEnter, humanClick } from "./humanize.ts";
 import { fillField, clickButton, uploadFile } from "./helpers.ts";
+import { getLimits } from "../schemas/platform-schema.ts";
 import type { DraftData } from "./types.ts";
 
 const CREATOR_URL = "https://creator.xiaohongshu.com";
 const DASHBOARD_URL = "https://creator.xiaohongshu.com/publish";
 const PUBLISH_URL = "https://creator.xiaohongshu.com/publish/publish";
-
-const LIMITS = {
-  image_text: { title: 20, body: 1000, maxTags: 10, maxImages: 18 },
-  video: { title: 20, body: 1000, maxTags: 10 },
-  article: { title: 64, body: 8000 },
-} as const;
 
 // ── Content type tab switching ──
 
@@ -94,6 +89,7 @@ async function doSubmit(page: Page): Promise<boolean> {
 // ── Image Text ──
 
 async function publishImageText(draft: DraftData): Promise<{ success: boolean; message: string }> {
+  const L = getLimits("小红书", "image_text")!;
   await navigateTo("xiaohongshu", PUBLISH_URL);
   await sleep(3000);
   const page = await getPage("xiaohongshu");
@@ -104,15 +100,15 @@ async function publishImageText(draft: DraftData): Promise<{ success: boolean; m
   await humanEnter(page);
   await clickToContentEditor(page, "image_text");
 
-  if (draft.images?.length) {
-    for (const img of draft.images.slice(0, LIMITS.image_text.maxImages)) {
+  if (draft.images?.length && L.maxImages !== undefined) {
+    for (const img of draft.images.slice(0, L.maxImages)) {
       await uploadFile(page, img);
       await sleep(3000);
     }
   }
 
-  await fillTitle(page, draft.title.slice(0, LIMITS.image_text.title));
-  await fillBody(page, draft.content.slice(0, LIMITS.image_text.body));
+  if (L.title !== undefined) await fillTitle(page, draft.title.slice(0, L.title));
+  if (L.body !== undefined) await fillBody(page, draft.content.slice(0, L.body));
 
   if (!(await doSubmit(page))) {
     return { success: false, message: "找不到保存草稿按钮" };
@@ -124,6 +120,7 @@ async function publishImageText(draft: DraftData): Promise<{ success: boolean; m
 
 async function publishVideo(draft: DraftData): Promise<{ success: boolean; message: string }> {
   if (!draft.video) return { success: false, message: "草稿缺少视频文件" };
+  const L = getLimits("小红书", "video")!;
 
   await navigateTo("xiaohongshu", PUBLISH_URL);
   await sleep(3000);
@@ -136,8 +133,8 @@ async function publishVideo(draft: DraftData): Promise<{ success: boolean; messa
   await clickToContentEditor(page, "video");
 
   await uploadFile(page, draft.video);
-  await fillTitle(page, draft.title.slice(0, LIMITS.video.title));
-  await fillBody(page, draft.content.slice(0, LIMITS.video.body));
+  if (L.title !== undefined) await fillTitle(page, draft.title.slice(0, L.title));
+  if (L.body !== undefined) await fillBody(page, draft.content.slice(0, L.body));
 
   if (!(await doSubmit(page))) {
     return { success: false, message: "找不到保存草稿按钮" };
@@ -148,6 +145,7 @@ async function publishVideo(draft: DraftData): Promise<{ success: boolean; messa
 // ── Article ──
 
 async function publishArticle(draft: DraftData): Promise<{ success: boolean; message: string }> {
+  const L = getLimits("小红书", "article")!;
   await navigateTo("xiaohongshu", PUBLISH_URL);
   await sleep(3000);
   const page = await getPage("xiaohongshu");
@@ -160,8 +158,8 @@ async function publishArticle(draft: DraftData): Promise<{ success: boolean; mes
 
   if (draft.cover) await uploadFile(page, draft.cover);
 
-  await fillTitle(page, draft.title.slice(0, LIMITS.article.title));
-  await fillBody(page, draft.content.slice(0, LIMITS.article.body));
+  if (L.title !== undefined) await fillTitle(page, draft.title.slice(0, L.title));
+  if (L.body !== undefined) await fillBody(page, draft.content.slice(0, L.body));
 
   if (draft.abstract) {
     const abstractLoc = await pickVisible(page, [

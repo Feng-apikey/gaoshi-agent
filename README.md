@@ -112,7 +112,7 @@ start msedge --remote-debugging-port=9222
 | **小红书** | 图文笔记、视频笔记、长文 | Publish 工具 → 草稿箱 | Edge 浏览器已登录 session |
 | **B站** | 动态、视频、专栏 | Publish 工具 → 草稿箱 | Edge 浏览器已登录 session |
 
-各平台的字数限制、图片尺寸、宽高比、标签数量等规范内置在 `config/platform-limits.json`，Agent 写稿时自动遵守。
+各平台的字数限制、图片尺寸、宽高比、标签数量等规范内置在 `schemas/platform-schema.ts`，Agent 写稿时自动遵守。
 
 ---
 
@@ -259,7 +259,6 @@ gaoshi-pure/
 ├── config/
 │   ├── providers.json        # 内置模型厂商配置（DeepSeek / MiniMax / 智谱 / Kimi / 通义千问 / MiMo）
 │   ├── providers.example.json # 配置模板（不含 API Key，git 跟踪）
-│   ├── platform-limits.json  # 平台限制规则（字数/图片数/宽高比/标签数）
 │   └── settings.json         # 全局设置
 │
 ├── scripts/

@@ -20,8 +20,8 @@ export function createPlatformTools(): ToolDef[] {
           },
           content_type: {
             type: "string",
-            description: "内容类型：image_text（图文）、video（视频）、article（长文）",
-            enum: ["image_text", "video", "article"],
+            description: "内容类型：image_text（图文，抖音/小红书）、dynamic（动态，B站图文）、video（视频）、article（长文）",
+            enum: ["image_text", "dynamic", "video", "article"],
           },
           draft_id: { type: "string", description: "草稿 ID，由 draft_save 返回" },
         },

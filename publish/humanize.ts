@@ -261,13 +261,21 @@ export async function humanEnter(page: Page): Promise<void> {
 }
 
 /**
- * Wait for a file upload to complete by watching network idle, then a short DOM buffer.
- * Falls back to a generous timeout if network never settles (e.g. polling pages).
+ * Wait for a file upload to complete via DOM probes for "uploaded" markers.
+ * networkidle is unreliable for chunked video uploads — DOM presence of
+ * "重新上传/已上传/上传成功" or a thumbnail is the real completion signal.
+ * Timeout does NOT throw — let caller decide what to do.
  */
 export async function waitForUploadComplete(page: Page, isVideo: boolean): Promise<void> {
+  const timeout = isVideo ? 180000 : 30000;
   try {
-    await page.waitForLoadState("networkidle", { timeout: isVideo ? 120000 : 30000 });
-  } catch {}
+    await page.waitForFunction(() => {
+      const text = document.body.innerText;
+      return /重新上传|重新选择|已上传|上传完成|上传成功/.test(text);
+    }, { timeout });
+  } catch {
+    // Timeout is non-fatal — caller / platform UI decides.
+  }
   await sleep(isVideo ? 2000 : 1000);
 }
 

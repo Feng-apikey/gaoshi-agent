@@ -34,7 +34,7 @@ server.registerTool("draft_save", {
     content: z.string(),
     tags: z.array(z.string()).optional(),
     platform: z.string().optional(),
-    content_type: z.enum(["article", "image_text", "video"]).optional(),
+    content_type: z.enum(["article", "image_text", "video", "dynamic"]).optional(),
     images: z.array(z.string()).optional(),
     video: z.string().optional(),
     cover: z.string().optional(),

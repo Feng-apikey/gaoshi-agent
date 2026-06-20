@@ -2,15 +2,10 @@ import type { Page, Locator } from "playwright";
 import { getPage, navigateTo } from "./browser-manager.ts";
 import { sleep, pickVisible, humanReadPause, isOnLoginPage, humanEnter, humanClick } from "./humanize.ts";
 import { fillField, clickButton, uploadFile } from "./helpers.ts";
+import { getLimits } from "../schemas/platform-schema.ts";
 import type { DraftData } from "./types.ts";
 
 const CREATOR_URL = "https://creator.douyin.com";
-
-const LIMITS = {
-  image_text: { title: 20, body: 1000, maxTags: 5 },
-  video: { title: 30, body: 1000, maxTags: 5 },
-  article: { title: 30, body: 8000, abstract: 30, maxTags: 5, maxImages: 50 },
-} as const;
 
 // ── Element finders ──
 
@@ -83,6 +78,7 @@ async function submitDraft(page: Page): Promise<boolean> {
 // ── Image Text ──
 
 async function publishImageText(draft: DraftData): Promise<{ success: boolean; message: string }> {
+  const L = getLimits("抖音", "image_text")!;
   await navigateTo("douyin", CREATOR_URL);
   await sleep(2000);
   const page = await getPage("douyin");
@@ -92,18 +88,18 @@ async function publishImageText(draft: DraftData): Promise<{ success: boolean; m
   await humanEnter(page);
   await clickToContentEditor(page, "image_text");
 
-  if (draft.images?.length) {
-    for (const img of draft.images.slice(0, LIMITS.image_text.maxImages)) {
+  if (draft.images?.length && L.maxImages !== undefined) {
+    for (const img of draft.images.slice(0, L.maxImages)) {
       await uploadFile(page, img);
       await sleep(3000);
     }
   }
 
   const titleInput = await findTitleInput(page);
-  if (titleInput) await fillField(page, titleInput, draft.title.slice(0, LIMITS.image_text.title));
+  if (titleInput && L.title !== undefined) await fillField(page, titleInput, draft.title.slice(0, L.title));
 
   const editor = await findBodyEditor(page);
-  if (editor) await fillField(page, editor, draft.content.slice(0, LIMITS.image_text.body));
+  if (editor && L.body !== undefined) await fillField(page, editor, draft.content.slice(0, L.body));
 
   if (await submitDraft(page)) {
     return { success: true, message: `已保存到抖音草稿箱：${draft.title}` };
@@ -115,6 +111,7 @@ async function publishImageText(draft: DraftData): Promise<{ success: boolean; m
 
 async function publishVideo(draft: DraftData): Promise<{ success: boolean; message: string }> {
   if (!draft.video) return { success: false, message: "草稿缺少视频文件" };
+  const L = getLimits("抖音", "video")!;
 
   await navigateTo("douyin", CREATOR_URL);
   await sleep(2000);
@@ -128,12 +125,12 @@ async function publishVideo(draft: DraftData): Promise<{ success: boolean; messa
   await uploadFile(page, draft.video);
 
   const titleInput = await findTitleInput(page);
-  if (titleInput) await fillField(page, titleInput, draft.title.slice(0, LIMITS.video.title));
+  if (titleInput && L.title !== undefined) await fillField(page, titleInput, draft.title.slice(0, L.title));
 
   const descInput = await pickVisible(page, [
     () => page.getByPlaceholder(/(视频描述|描述|简介)/),
   ]);
-  if (descInput) await fillField(page, descInput, draft.content.slice(0, LIMITS.video.body));
+  if (descInput && L.body !== undefined) await fillField(page, descInput, draft.content.slice(0, L.body));
 
   if (await submitDraft(page)) {
     return { success: true, message: `视频已保存到抖音草稿箱：${draft.title}` };
@@ -144,6 +141,7 @@ async function publishVideo(draft: DraftData): Promise<{ success: boolean; messa
 // ── Article ──
 
 async function publishArticle(draft: DraftData): Promise<{ success: boolean; message: string }> {
+  const L = getLimits("抖音", "article")!;
   await navigateTo("douyin", CREATOR_URL);
   await sleep(2000);
   const page = await getPage("douyin");
@@ -154,15 +152,15 @@ async function publishArticle(draft: DraftData): Promise<{ success: boolean; mes
   await clickToContentEditor(page, "article");
 
   const titleInput = await findTitleInput(page);
-  if (titleInput) await fillField(page, titleInput, draft.title.slice(0, LIMITS.article.title));
+  if (titleInput && L.title !== undefined) await fillField(page, titleInput, draft.title.slice(0, L.title));
 
   const abstractInput = await findAbstractInput(page);
-  if (abstractInput) {
-    await fillField(page, abstractInput, (draft.abstract || draft.content.slice(0, 30)).slice(0, LIMITS.article.abstract));
+  if (abstractInput && L.abstract !== undefined) {
+    await fillField(page, abstractInput, (draft.abstract || draft.content.slice(0, 30)).slice(0, L.abstract));
   }
 
   const editor = await findBodyEditor(page);
-  if (editor) await fillField(page, editor, draft.content.slice(0, LIMITS.article.body));
+  if (editor && L.body !== undefined) await fillField(page, editor, draft.content.slice(0, L.body));
 
   if (await submitDraft(page)) {
     return { success: true, message: `长文已保存到抖音草稿箱：${draft.title}` };
