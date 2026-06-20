@@ -29,12 +29,7 @@ const TEST_DIR = path.join(os.tmpdir(), "gaoshi_test_materials");
 let db: ReturnType<typeof drizzle>;
 let sqlite: Database.Database;
 
-function transformMaterial(row: any) {
-  return {
-    ...row,
-    tags: typeof row.tags === "string" ? JSON.parse(row.tags) : row.tags,
-  };
-}
+import { transformMaterial } from "../api/routes/materials.ts";
 
 beforeAll(() => {
   fs.mkdirSync(TEST_DIR, { recursive: true });

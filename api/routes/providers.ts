@@ -4,7 +4,7 @@ import { providerConfig } from "../../storage/schema.ts";
 import { eq } from "drizzle-orm";
 import { loadPresets } from "../../agent/providers/presets.ts";
 
-function transformProvider(row: any) {
+export function transformProvider(row: any) {
   return {
     ...row,
     customModels: typeof row.customModels === "string" ? JSON.parse(row.customModels) : row.customModels,

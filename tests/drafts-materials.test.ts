@@ -12,6 +12,9 @@ import * as os from "node:os";
 const tmpDir = path.join(os.tmpdir(), `gaoshi_test_${Date.now()}`);
 const dbPath = path.join(tmpDir, "test.db");
 
+// Test-owned drizzle table mirrors production schema. This is intentional —
+// tests run against an isolated temp DB and need their own schema object to
+// avoid importing the singleton DB from storage/db.ts.
 const drafts = sqliteTable("drafts", {
   id: text("id").primaryKey(),
   title: text("title").notNull().default(""),
@@ -83,28 +86,12 @@ afterAll(() => {
   try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
 });
 
-// ── Helpers ──
+// ── Helpers (imported from real modules, not duplicated) ──
 
 const now = () => new Date().toISOString();
 const uid = (prefix: string) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-function parseJSON(v: any) { try { return typeof v === "string" ? JSON.parse(v) : v; } catch { return v; } }
-
-function transformDraft(row: any) {
-  return {
-    ...row,
-    tags: parseJSON(row.tags),
-    images: parseJSON(row.images ?? "[]"),
-    video: row.video ?? "",
-    cover: row.cover ?? "",
-    header: row.header ?? "",
-    abstract: row.abstract ?? "",
-    contentType: row.contentType ?? row.content_type ?? "article",
-  };
-}
-
-// ── Validation (imported from real module) ──
-
+import { transformDraft, parseJSON } from "../api/routes/drafts.ts";
 import { validateDraft } from "../api/validation.ts";
 
 // ═══════════════════════════════════════════

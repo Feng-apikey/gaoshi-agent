@@ -4,9 +4,9 @@ import { drafts, publishLog } from "../../storage/schema.ts";
 import { eq } from "drizzle-orm";
 import { validateDraft } from "../validation.ts";
 
-function parseJSON(v: any) { try { return typeof v === "string" ? JSON.parse(v) : v; } catch { return v; } }
+export function parseJSON(v: any) { try { return typeof v === "string" ? JSON.parse(v) : v; } catch { return v; } }
 
-function transformDraft(row: any) {
+export function transformDraft(row: any) {
   return {
     ...row,
     tags: parseJSON(row.tags),

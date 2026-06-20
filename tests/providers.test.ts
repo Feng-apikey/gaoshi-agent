@@ -30,12 +30,7 @@ const modelRouting = sqliteTable("model_routing", {
 const tmpDir = path.join(os.tmpdir(), `gaoshi_prov_test_${Date.now()}`);
 const dbPath = path.join(tmpDir, "test.db");
 
-function transformProvider(row: any) {
-  return {
-    ...row,
-    customModels: typeof row.customModels === "string" ? JSON.parse(row.customModels) : row.customModels,
-  };
-}
+import { transformProvider } from "../api/routes/providers.ts";
 
 let db: ReturnType<typeof drizzle>;
 let sqlite: Database.Database;

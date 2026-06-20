@@ -2,35 +2,13 @@ import { describe, it, expect } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
+import { parseFrontmatter } from "../agent/memory/manager.ts";
 
 // We test the core logic in isolation — parse/write round-trip,
 // hex detect, queue ID uniqueness.
 
 describe("memory frontmatter round-trip", () => {
   const tmpDir = path.join(os.tmpdir(), `gaoshi_test_${Date.now()}`);
-
-  // Replicate the fixed parseFrontmatter logic
-  function parseFrontmatter(raw: string): { headers: Record<string, string>; body: string } {
-    const match = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
-    if (!match) return { headers: {}, body: raw };
-    const headers: Record<string, string> = {};
-    let inMetadata = false;
-    for (const rawLine of match[1].split("\n")) {
-      const line = rawLine.trim();
-      if (!line) continue;
-      if (line === "metadata:") { inMetadata = true; continue; }
-      const kv = line.match(/^(?:\s{2})?(\w+):\s*(.*)$/);
-      if (kv) {
-        const key = kv[1];
-        if (inMetadata && (key === "type" || key === "updatedAt")) {
-          headers[key] = kv[2].trim();
-        } else {
-          headers[key] = kv[2].trim();
-        }
-      }
-    }
-    return { headers, body: match[2].trim() };
-  }
 
   // Replicate the fixed toFrontmatter (flat format)
   function toFrontmatter(entry: { name: string; description: string; type: string; content: string; updatedAt: string }): string {

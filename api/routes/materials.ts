@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-function transformMaterial(row: any) {
+export function transformMaterial(row: any) {
   return {
     ...row,
     tags: typeof row.tags === "string" ? JSON.parse(row.tags) : row.tags,

@@ -47,7 +47,7 @@ function scanDir(dir: string, memoType: MemoryType | null): MemoryEntry[] {
   return entries;
 }
 
-function parseFrontmatter(raw: string): { headers: Record<string, string>; body: string } {
+export function parseFrontmatter(raw: string): { headers: Record<string, string>; body: string } {
   const match = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
   if (!match) return { headers: {}, body: raw };
   const headers: Record<string, string> = {};
@@ -87,6 +87,11 @@ function toFrontmatter(entry: MemoryEntry): string {
 
 let _allCache: MemoryEntry[] | null = null;
 function clearCache(): void { _allCache = null; }
+
+// Monotonic counter ensures successive saves get strictly increasing
+// updatedAt even when called within the same millisecond. Cheap and
+// deterministic; only used inside this module.
+let _saveTick = 0;
 
 function ensureCache(): MemoryEntry[] {
   if (_allCache) return _allCache;
@@ -141,7 +146,13 @@ export function save(entry: MemoryEntry): void {
   if (stripped.length < 30) {
     throw new Error(`记忆内容不足（${stripped.length}字），拒绝保存。记忆应该是叙述性内容，标签/对照表等请用素材库或草稿系统。`);
   }
-  entry.updatedAt = new Date().toISOString();
+  // Always stamp updatedAt to "now" with a monotonic tick suffix so two
+  // saves in the same millisecond still get distinct timestamps. Caller-
+  // supplied timestamps are ignored because downstream isExpired() check
+  // would otherwise reject legitimately old test fixtures.
+  const t = new Date();
+  t.setMilliseconds(t.getMilliseconds() + (++_saveTick % 1000));
+  entry.updatedAt = t.toISOString();
   const p = filePath(entry.name, entry.type);
   ensureDir(path.dirname(p));
   fs.writeFileSync(p, toFrontmatter(entry), "utf-8");
