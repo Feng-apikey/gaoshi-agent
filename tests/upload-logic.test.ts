@@ -1,23 +1,5 @@
 import { describe, it, expect } from "vitest";
-
-// ═══════════════════════════════════════════
-// Replicated from api/routes/upload.ts
-// ═══════════════════════════════════════════
-
-const ALLOWED_TYPES: Record<string, string[]> = {
-  document: [".pdf", ".docx", ".doc", ".txt", ".md", ".html"],
-  image: [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"],
-  audio: [".mp3", ".wav", ".ogg", ".m4a", ".opus", ".aac"],
-  voice: [".webm"],
-  video: [".mp4", ".mov", ".avi", ".mkv"],
-};
-
-function extToCategory(ext: string): string | null {
-  for (const [cat, exts] of Object.entries(ALLOWED_TYPES)) {
-    if (exts.includes(ext.toLowerCase())) return cat;
-  }
-  return null;
-}
+import { extToCategory } from "../api/routes/upload.ts";
 
 const MAX_SIZE = 100 * 1024 * 1024; // 100MB
 

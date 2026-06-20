@@ -5,10 +5,8 @@ import * as crypto from "node:crypto";
 import { Readable } from "node:stream";
 import { eq } from "drizzle-orm";
 import { imageSize } from "image-size";
-import { getModel } from "../../agent/providers/router.ts";
 import { getDB } from "../../storage/db.ts";
 import { materials } from "../../storage/schema.ts";
-import { generateText } from "ai";
 
 export const uploadRouter = new Hono();
 
@@ -23,7 +21,7 @@ const ALLOWED_TYPES: Record<string, string[]> = {
   video: [".mp4", ".mov", ".avi", ".mkv"],
 };
 
-function extToCategory(ext: string): string | null {
+export function extToCategory(ext: string): string | null {
   for (const [cat, exts] of Object.entries(ALLOWED_TYPES)) {
     if (exts.includes(ext.toLowerCase())) return cat;
   }
@@ -80,23 +78,7 @@ uploadRouter.post("/", async (c) => {
     createdAt: new Date().toISOString(),
   };
 
-  // ── Auto-analyze: generate description for images ──
-  if (category === "image") {
-    try {
-      const visionModel = getModel("vision");
-      const { text } = await generateText({
-        model: visionModel,
-        messages: [{
-          role: "user",
-          content: [
-            { type: "text", text: "用一句话（中文，不超过30字）描述这张图片的内容和风格。" },
-            { type: "image", image: buffer.toString("base64"), mimeType: file.type || "image/png" },
-          ],
-        }],
-      });
-      result.description = text;
-    } catch { result.description = null; }
-  }
+  // Auto-analysis removed — use POST /api/materials/:id/analyze to tag manually
 
   // ── Video: flag as analyzable ──
   if (category === "video") {
@@ -116,7 +98,7 @@ uploadRouter.post("/", async (c) => {
       width: imageWidth,
       height: imageHeight,
       tags: "[]",
-      description: result.description ?? "",
+      description: "",
       generatedBy: "",
       useCount: 0,
       createdAt: result.createdAt,
@@ -177,8 +159,8 @@ uploadRouter.get("/:id{.*}", (c) => {
   };
   const mime = mimeMap[ext] ?? "application/octet-stream";
 
-  // Force inline display for text and PDF — browser renders without download
-  const inlineTypes = new Set(["text/plain", "text/html", "application/pdf"]);
+  // Force inline for text and PDF; HTML/SVG always attachment (prevents same-origin XSS)
+  const inlineTypes = new Set(["text/plain", "application/pdf"]);
   const isInline = inlineTypes.has(mime.split(";")[0]);
 
   try {

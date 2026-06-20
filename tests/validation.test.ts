@@ -16,14 +16,14 @@ describe("validateDraft content limits", () => {
     expect(errors.some(e => e.field === "content" && e.message.includes("字数超过限制"))).toBe(true);
   });
 
-  it("rejects 小红书 image_text with more than 9 images", () => {
-    const content = Array.from({ length: 12 }, (_, i) => `![img${i}](url${i})`).join("\n");
+  it("rejects 小红书 image_text with more than 18 images", () => {
+    const content = Array.from({ length: 20 }, (_, i) => `![img${i}](url${i})`).join("\n");
     const errors = validateDraft("小红书", "image_text", content);
     expect(errors.some(e => e.field === "content" && e.message.includes("图片超过限制"))).toBe(true);
   });
 
-  it("allows exactly 9 images for 小红书 image_text", () => {
-    const content = Array.from({ length: 9 }, (_, i) => `![img${i}](url${i})`).join("\n");
+  it("allows exactly 18 images for 小红书 image_text", () => {
+    const content = Array.from({ length: 18 }, (_, i) => `![img${i}](url${i})`).join("\n");
     const errors = validateDraft("小红书", "image_text", content);
     expect(errors.filter(e => e.field === "content" && e.message.includes("图片")).length).toBe(0);
   });
@@ -48,13 +48,13 @@ describe("validateDraft content limits", () => {
     expect(errors.filter(e => e.field === "content")).toHaveLength(0);
   });
 
-  it("rejects 抖音 video content exceeding 500 chars", () => {
-    const errors = validateDraft("抖音", "video", "字".repeat(600));
+  it("rejects 抖音 video content exceeding 1000 chars", () => {
+    const errors = validateDraft("抖音", "video", "字".repeat(1100));
     expect(errors.some(e => e.field === "content" && e.message.includes("字数超过限制"))).toBe(true);
   });
 
-  it("rejects B站 video body over 250 chars", () => {
-    const errors = validateDraft("B站", "video", "字".repeat(300));
+  it("rejects B站 video body over 2000 chars", () => {
+    const errors = validateDraft("B站", "video", "字".repeat(2100));
     expect(errors.some(e => e.field === "content" && e.message.includes("字数超过限制"))).toBe(true);
   });
 });
@@ -149,7 +149,7 @@ describe("validateDraft edge cases", () => {
   });
 
   it("counts HTML img tags as images", () => {
-    const content = '<img src="a.jpg"><img src="b.jpg">'.repeat(6);
+    const content = '<img src="a.jpg"><img src="b.jpg">'.repeat(10);
     const errors = validateDraft("小红书", "image_text", content);
     expect(errors.some(e => e.message.includes("图片超过限制"))).toBe(true);
   });

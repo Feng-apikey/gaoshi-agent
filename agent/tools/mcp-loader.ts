@@ -19,11 +19,9 @@ interface ToolManifest {
  */
 export async function loadAllMCPTools(): Promise<ToolDef[]> {
   const configPath = path.join(process.cwd(), "mcp", "servers.json");
-  const legacyPath = path.join(process.cwd(), "browser", "servers.json");
   let configs: Record<string, any> = {};
   try {
     if (fs.existsSync(configPath)) configs = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-    else if (fs.existsSync(legacyPath)) configs = JSON.parse(fs.readFileSync(legacyPath, "utf-8"));
   } catch {}
 
   const allTools: ToolDef[] = [];
@@ -83,11 +81,9 @@ async function getToolManifest(serverId: string): Promise<ToolManifest[]> {
 /** Generate manifests for all configured MCP servers (call during build) */
 export async function buildManifests(): Promise<void> {
   const configPath = path.join(process.cwd(), "mcp", "servers.json");
-  const legacyPath = path.join(process.cwd(), "browser", "servers.json");
   let configs: Record<string, any> = {};
   try {
     if (fs.existsSync(configPath)) configs = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-    else if (fs.existsSync(legacyPath)) configs = JSON.parse(fs.readFileSync(legacyPath, "utf-8"));
   } catch {}
 
   fs.mkdirSync(MANIFEST_DIR, { recursive: true });

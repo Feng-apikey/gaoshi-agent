@@ -1,8 +1,10 @@
 import type { ToolDef } from "./types.ts";
 
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
+const SEARXNG_URL = "http://localhost:8888/search";
+const SEARCH_TIMEOUT = 15000;
 
-function stripHtml(html: string, maxChars: number): string {
+export function stripHtml(html: string, maxChars: number): string {
   return html
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
@@ -28,32 +30,55 @@ export function createWebTools(): ToolDef[] {
       },
       execute: async (args: any) => {
         const maxChars = args.maxChars ?? 8000;
-        const resp = await fetch(args.url, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(15000) }).catch(() => null);
+        const resp = await fetch(args.url, {
+          headers: { "User-Agent": UA },
+          signal: AbortSignal.timeout(SEARCH_TIMEOUT),
+        }).catch(() => null);
         if (!resp?.ok) return { error: `HTTP ${resp?.status ?? "fetch failed"}` };
         return { url: args.url, content: stripHtml(await resp.text(), maxChars) };
       },
     },
     {
       name: "web_search",
-      description: "搜索网页。优先用 BING_API_KEY，无 key 则抓取 Bing 搜索结果页。",
+      description: "搜索网页。通过 SearXNG（本地聚合必应+百度）搜索，返回标题、链接和摘要。",
       inputSchema: {
         type: "object",
         properties: {
           query: { type: "string", description: "搜索关键词" },
-          count: { type: "number", description: "返回数量，默认 10" },
+          count: { type: "number", description: "返回数量，默认 10，最大 20" },
         },
         required: ["query"],
       },
       execute: async (args: any) => {
         const query = encodeURIComponent(args.query);
-        const count = args.count ?? 10;
+        const count = Math.min(args.count ?? 10, 20);
 
-        // Try API first
+        // 1. SearXNG (local, free, Bing + Baidu)
+        try {
+          const resp = await fetch(
+            `${SEARXNG_URL}?q=${query}&format=json&categories=general&pageno=1`,
+            { signal: AbortSignal.timeout(SEARCH_TIMEOUT) },
+          );
+          if (resp.ok) {
+            const data = await resp.json() as any;
+            const results = (data.results ?? []).slice(0, count).map((r: any) => ({
+              title: r.title ?? "",
+              url: r.url ?? "",
+              snippet: r.content ?? "",
+            }));
+            return { query: args.query, results };
+          }
+        } catch {}
+
+        // 2. Bing API fallback
         const apiKey = process.env.BING_API_KEY;
         if (apiKey) {
           const resp = await fetch(
             `https://api.bing.microsoft.com/v7.0/search?q=${query}&count=${count}&mkt=zh-CN`,
-            { headers: { "Ocp-Apim-Subscription-Key": apiKey } },
+            {
+              headers: { "Ocp-Apim-Subscription-Key": apiKey },
+              signal: AbortSignal.timeout(SEARCH_TIMEOUT),
+            },
           );
           if (resp.ok) {
             const data = await resp.json() as any;
@@ -66,24 +91,7 @@ export function createWebTools(): ToolDef[] {
           }
         }
 
-        // Fallback: scrape Bing China search results
-        const resp = await fetch(`https://cn.bing.com/search?q=${query}&count=${count}`, {
-          headers: { "User-Agent": UA, "Accept-Language": "zh-CN" },
-          signal: AbortSignal.timeout(15000),
-        }).catch(() => null);
-        if (!resp?.ok) return { error: "搜索失败" };
-
-        const html = await resp.text();
-        const results: Array<{ title: string; url: string; snippet: string }> = [];
-        const links = html.match(/<a[^>]*href="(https?:\/\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/gi) ?? [];
-        for (const link of links.slice(0, count)) {
-          const href = link.match(/href="(https?:\/\/[^"]+)"/i)?.[1];
-          const text = link.replace(/<[^>]+>/g, "").trim();
-          if (href && text && !href.includes("bing.com") && !href.includes("microsoft.com")) {
-            results.push({ title: text.slice(0, 100), url: href, snippet: "" });
-          }
-        }
-        return { query: args.query, results: results.slice(0, count) };
+        return { error: "搜索暂不可用，请确认 SearXNG 已启动或 BING_API_KEY 已设置" };
       },
     },
   ];

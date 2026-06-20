@@ -185,17 +185,15 @@ materialsRouter.delete("/:id{.+}", (c) => {
   return c.json({ deleted: true, id });
 });
 
-const IMAGE_ANALYSIS_PROMPT = `分析这张图片，返回 JSON：{"tags": [...], "description": "..."}
+const IMAGE_ANALYSIS_PROMPT = `分析这张图片，返回 JSON：{"tags": [...]}
 
 tags：3-8 个中文标签，每个不超过 6 个汉字，覆盖内容主题、视觉风格、适用场景。
-description：一句话描述图片用途和特点，不超过 50 字。
 
 只返回 JSON，不要其他内容。`;
 
-const DOC_ANALYSIS_PROMPT = `分析以下文档，返回 JSON：{"tags": [...], "description": "..."}
+const DOC_ANALYSIS_PROMPT = `分析以下文档，返回 JSON：{"tags": [...]}
 
 tags：3-8 个中文标签，每个不超过 6 个汉字，覆盖文档主题、内容类型、适用场景。
-description：一句话概括文档核心内容和用途，不超过 50 字。
 
 只返回 JSON，不要其他内容。
 
@@ -244,7 +242,7 @@ materialsRouter.post("/:id{.+}/analyze", async (c) => {
         const name = row.name ?? path.basename(row.path);
         messages = [{
           role: "user",
-          content: `根据图片文件名推测内容，返回 JSON：{"tags": [...], "description": "..."}。tags 3-8 个中文标签不超 6 字。description 一句话不超 50 字。只返回 JSON。\n\n文件名：${name}`,
+          content: `根据图片文件名推测内容，返回 JSON：{"tags": [...]}。tags 3-8 个中文标签不超 6 字。只返回 JSON。\n\n文件名：${name}`,
         }];
       }
     } else if (row.category === "video") {
@@ -257,7 +255,7 @@ materialsRouter.post("/:id{.+}/analyze", async (c) => {
         modelType = "video";
         messages = [{
           role: "user",
-          content: "分析这个视频的内容和风格。返回 JSON：{\"tags\": [...], \"description\": \"...\"}。tags 3-8 个中文标签不超 6 字。description 一句话不超 50 字。只返回 JSON。",
+          content: "分析这个视频的内容和风格。返回 JSON：{\"tags\": [...]}。tags 3-8 个中文标签不超 6 字。只返回 JSON。",
         }];
         videoAnalyzed = true;
       } catch {}
@@ -297,7 +295,7 @@ materialsRouter.post("/:id{.+}/analyze", async (c) => {
             messages = [{
               role: "user",
               content: [
-                { type: "text", text: "这是同一视频的连续关键帧。分析视频内容、风格和用途。返回 JSON：{\"tags\": [...], \"description\": \"...\"}。tags 3-8 个中文标签不超 6 字。description 一句话不超 50 字。只返回 JSON。" },
+                { type: "text", text: "这是同一视频的连续关键帧。分析视频内容、风格和用途。返回 JSON：{\"tags\": [...]}。tags 3-8 个中文标签不超 6 字。只返回 JSON。" },
                 ...imageParts,
               ],
             }];
@@ -313,7 +311,7 @@ materialsRouter.post("/:id{.+}/analyze", async (c) => {
         const sizeMB = Math.round((row.size ?? 0) / 1024 / 1024);
         messages = [{
           role: "user",
-          content: `根据视频文件名推测内容，返回 JSON：{"tags": [...], "description": "..."}。tags 3-8 个中文标签不超 6 字。description 一句话不超 50 字。只返回 JSON。\n\n文件名：${name}\n大小：${sizeMB}MB`,
+          content: `根据视频文件名推测内容，返回 JSON：{"tags": [...]}。tags 3-8 个中文标签不超 6 字。只返回 JSON。\n\n文件名：${name}\n大小：${sizeMB}MB`,
         }];
       }
     } else {
@@ -329,7 +327,6 @@ materialsRouter.post("/:id{.+}/analyze", async (c) => {
     });
 
     let tags: string[] = [];
-    let description = "";
 
     // Strip markdown fences and extract the JSON object
     let cleaned = text.trim()
@@ -346,9 +343,6 @@ materialsRouter.post("/:id{.+}/analyze", async (c) => {
       if (Array.isArray(parsed.tags)) {
         tags = parsed.tags.filter((t: unknown) => typeof t === "string" && t.length <= 6).slice(0, 8);
       }
-      if (typeof parsed.description === "string") {
-        description = parsed.description.slice(0, 100);
-      }
     } catch {
       const tagMatch = text.match(/\[([^\]]+)\]/);
       if (tagMatch) {
@@ -358,7 +352,6 @@ materialsRouter.post("/:id{.+}/analyze", async (c) => {
 
     const setData: Record<string, any> = {};
     if (tags.length > 0) setData.tags = JSON.stringify(tags);
-    if (description) setData.description = description;
 
     if (Object.keys(setData).length > 0) {
       db.update(materials).set(setData).where(eq(materials.id, id)).run();

@@ -41,9 +41,29 @@ const contentChars = computed(() => {
   return editContent.value.replace(/\s/g, '').length
 })
 const imageCount = computed(() => editImages.value.length)
+const showTags = computed(() => {
+  // 仅小红书/B站长文和B站动态无标签
+  if (editType.value === 'article' && editPlatform.value !== '抖音') return false
+  if (editPlatform.value === 'B站' && editType.value === 'dynamic') return false
+  return true
+})
+
 const tagCount = computed(() => {
+  if (usesInlineTags.value) {
+    const m = editTags.value.match(/#([一-鿿\w]+)/g)
+    return m ? m.length : 0
+  }
   return editTags.value.split(',').map(s => s.trim()).filter(Boolean).length
 })
+// 内联标签平台：标签在正文以 #tag #tag 格式呈现，合并计算字数
+const usesInlineTags = computed(() =>
+  (editPlatform.value === '抖音' || editPlatform.value === '小红书') && (editType.value === 'image_text' || editType.value === 'video')
+)
+const inlineTagChars = computed(() => {
+  if (!usesInlineTags.value) return 0
+  return editTags.value.replace(/\s/g, '').length
+})
+const totalChars = computed(() => contentChars.value + inlineTagChars.value)
 
 // ── Editor state ──
 const editing = ref<Draft | null>(null)
@@ -151,7 +171,9 @@ async function openEdit(draft: Draft) {
   editContent.value = draft.content
   editPlatform.value = draft.platform
   editType.value = draft.contentType
-  editTags.value = (draft.tags ?? []).join(', ')
+  editTags.value = usesInlineTags.value
+    ? (draft.tags ?? []).filter(Boolean).map((t: string) => t.startsWith('#') ? t : '#' + t).join(' ')
+    : (draft.tags ?? []).join(', ')
   editAbstract.value = draft.abstract ?? ''
   editImages.value = draft.images ?? []
   editVideo.value = draft.video ?? ''
@@ -282,7 +304,9 @@ async function handleSave() {
   validationErrors.value = []
   saving.value = true
   try {
-    const tags = editTags.value.split(',').map(s => s.trim()).filter(Boolean)
+    const tags = usesInlineTags.value
+      ? [...editTags.value.matchAll(/#([一-鿿\w]+)/g)].map((m: any) => m[1])
+      : editTags.value.split(',').map(s => s.trim()).filter(Boolean)
     const payload = {
       title: editTitle.value || '无标题',
       content: editContent.value,
@@ -463,26 +487,27 @@ async function handleSave() {
             <textarea ref="contentTextarea" v-model="editContent" rows="10" :placeholder="editType === 'article' ? '输入正文内容...（可直接粘贴图片）' : '输入正文内容...'" @paste="handlePaste" />
           </label>
           <div v-if="currentLimit" class="char-counter">
-            <span :class="currentLimit.body && contentChars > currentLimit.body ? 'over' : currentLimit.minBody && contentChars < currentLimit.minBody ? 'under' : ''">
-              {{ contentChars }}
+            <span :class="currentLimit.body && (usesInlineTags ? totalChars : contentChars) > currentLimit.body ? 'over' : currentLimit.minBody && contentChars < currentLimit.minBody ? 'under' : ''">
+              {{ usesInlineTags ? totalChars : contentChars }}
             </span>
             <template v-if="currentLimit.body">
               / {{ currentLimit.body }} 字
-              <span v-if="currentLimit.minBody && contentChars < currentLimit.minBody" class="hint">（最少 {{ currentLimit.minBody }} 字）</span>
+              <span v-if="usesInlineTags && inlineTagChars > 0" class="hint">（正文 {{ contentChars }} + 标签 {{ inlineTagChars }}）</span>
+              <span v-else-if="currentLimit.minBody && contentChars < currentLimit.minBody" class="hint">（最少 {{ currentLimit.minBody }} 字）</span>
             </template>
             <template v-else>
               字
             </template>
-            <span v-if="currentLimit.body && contentChars > currentLimit.body" class="hint over"> 超出限制</span>
+            <span v-if="currentLimit.body && (usesInlineTags ? totalChars : contentChars) > currentLimit.body" class="hint over"> 超出限制</span>
           </div>
 
-          <label class="field">
+          <label v-if="showTags" class="field">
             <span>
-              标签（逗号分隔）
+              {{ usesInlineTags ? '标签（#tag 格式）' : '标签（逗号分隔）' }}
               <template v-if="currentLimit?.maxTags">（≤{{ currentLimit.maxTags }}个）</template>
             </span>
             <div style="display:flex;align-items:center;gap:6px">
-              <input v-model="editTags" placeholder="风景, 美食, 旅行" style="flex:1" />
+              <input v-model="editTags" :placeholder="usesInlineTags ? '#美食 #旅行' : '风景, 美食, 旅行'" style="flex:1" />
               <span v-if="currentLimit?.maxTags" class="mini-counter" :class="{ over: tagCount > currentLimit.maxTags }">
                 {{ tagCount }}/{{ currentLimit.maxTags }}
               </span>

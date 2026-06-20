@@ -1,4 +1,5 @@
 import type { Page, Locator } from "playwright";
+import { exec } from "node:child_process";
 
 // ── Random helpers ──
 
@@ -166,58 +167,22 @@ export async function humanReadPause(): Promise<void> {
 
 // ── Clipboard paste ──
 
+/**
+ * Write text to system clipboard via PowerShell, then paste via Ctrl+V.
+ * Bypasses all JS clipboard APIs — the page only sees the keyboard event.
+ */
 export async function pasteText(page: Page, text: string): Promise<void> {
-  // Primary: native Clipboard API via CDP permission grant
-  let copied = false;
-  try {
-    const client = await page.context().newCDPSession(page);
-    await client.send("Browser.grantPermissions", {
-      permissions: ["clipboardReadWrite"],
-      origin: page.url(),
-    });
-    copied = await page.evaluate(async (t: string) => {
-      try {
-        await navigator.clipboard.writeText(t);
-        return true;
-      } catch {
-        return false;
-      }
-    }, text);
-  } catch {}
-
-  // Fallback: legacy execCommand
-  if (!copied) {
-    copied = await page.evaluate((t: string) => {
-      const ta = document.createElement("textarea");
-      ta.style.position = "fixed";
-      ta.style.left = "-9999px";
-      ta.value = t;
-      document.body.appendChild(ta);
-      ta.focus();
-      ta.select();
-      const r = document.execCommand("copy");
-      document.body.removeChild(ta);
-      return r;
-    }, text);
-    if (!copied) {
-      await page.keyboard.press("Control+a");
-      await page.keyboard.press("Backspace");
-      await sleep(rand(50, 100));
-      await page.evaluate((t: string) => {
-        const ta = document.createElement("textarea");
-        ta.style.position = "fixed";
-        ta.style.left = "-9999px";
-        ta.value = t;
-        document.body.appendChild(ta);
-        ta.focus();
-        ta.select();
-        document.execCommand("copy");
-        document.body.removeChild(ta);
-      }, text);
-    }
-  }
-
-  await sleep(rand(50, 120));
+  // Base64-encode to safely pass any text (Chinese, newlines, special chars) through PowerShell
+  const b64 = Buffer.from(text, 'utf-8').toString('base64');
+  const psCmd = `[System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('${b64}')) | Set-Clipboard`;
+  await new Promise<void>((resolve, reject) => {
+    exec(`powershell -Command "${psCmd}"`, { windowsHide: true, timeout: 5000 },
+      (err) => err ? reject(err) : resolve()
+    );
+  });
+  // PowerShell may have stolen focus — reclaim before pasting
+  await page.bringToFront();
+  await sleep(rand(200, 400));
   await page.keyboard.press("Control+v");
 }
 
@@ -257,6 +222,42 @@ export async function pickVisible(page: Page, factories: Array<() => Locator>, t
 export function isOnLoginPage(page: Page): boolean {
   const url = page.url();
   return url.includes("/login") || url.includes("/signin");
+}
+
+/**
+ * Simulate a human scanning the page after a tab switch — pause, look around,
+ * occasional micro-scroll. Call once after dismissPopups, before first fill.
+ *
+ * Total duration: 2–5s.
+ */
+export async function humanOrient(page: Page): Promise<void> {
+  // 1. Initial pause — visual recognition of where I am
+  await sleep(rand(800, 1500));
+
+  // 2. Scan: 2–3 gaze-and-look movements
+  const scans = rand(2, 3);
+  for (let i = 0; i < scans; i++) {
+    const tx = rand(300, 1100);
+    const ty = rand(150, 600);
+    await humanMouseMove(page, tx, ty);
+    await sleep(rand(400, 800));
+  }
+
+  // 3. 20% chance: micro-scroll to confirm page position
+  if (Math.random() < 0.2) {
+    const dy = rand(40, 120) * (Math.random() < 0.5 ? 1 : -1);
+    await page.mouse.wheel(0, dy);
+    await sleep(rand(200, 400));
+  }
+}
+
+/**
+ * Enter a platform page: dismiss popups, then simulate a human scanning the page.
+ * Call once after navigateTo + login check, before any fill operations.
+ */
+export async function humanEnter(page: Page): Promise<void> {
+  await dismissPopups(page);
+  await humanOrient(page);
 }
 
 /**

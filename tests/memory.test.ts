@@ -101,7 +101,7 @@ describe("memory indexer", () => {
 
     const results = search("品牌");
     expect(results.length).toBeGreaterThan(0);
-    expect(results[0].name).toBe("brand-voice");
+    expect(results[0].name).toBe("project::brand-voice");
   });
 
   it("returns empty for no match", () => {
@@ -129,7 +129,7 @@ describe("memory indexer", () => {
     ];
     buildIndex(entries);
     const results = search("品牌 小红书");
-    expect(results[0].name).toBe("exact-match");
+    expect(results[0].name).toBe("project::exact-match");
     expect(results[0].score).toBeGreaterThan(results[1]?.score ?? 0);
   });
 });
@@ -300,13 +300,13 @@ describe("memory search", () => {
     cleanAll();
     save({ name: "hidden-gem", description: "杂项", type: "reference", content: "reference memory about content strategy " + "小红书投放策略的详细信息在这里", updatedAt: "2026-01-01T00:00:00Z" });
     const results = search("小红书投放");
-    expect(results.some(r => r.name === "hidden-gem")).toBe(true);
+    expect(results.some(r => r.name === "reference::hidden-gem")).toBe(true);
   });
 
   it("cross-language search works", () => {
     cleanAll();
     save({ name: "api-docs", description: "API接口文档", type: "reference", content: "REST API endpoints for content management system", updatedAt: "2026-01-01T00:00:00Z" });
     const results = search("API");
-    expect(results.some(r => r.name === "api-docs")).toBe(true);
+    expect(results.some(r => r.name === "reference::api-docs")).toBe(true);
   });
 });

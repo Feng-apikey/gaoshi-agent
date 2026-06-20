@@ -7,7 +7,8 @@ import { eq } from "drizzle-orm";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 
-function safePath(subpath: string): string {
+export function safePath(subpath: string, baseDir?: string): string {
+  const DATA_DIR = baseDir ?? path.join(process.cwd(), "data");
   const resolved = path.resolve(DATA_DIR);
   const full = path.resolve(DATA_DIR, subpath);
   if (full !== resolved && !full.startsWith(resolved + path.sep)) throw new Error("路径越界");

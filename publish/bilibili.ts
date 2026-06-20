@@ -1,6 +1,6 @@
 import type { Page } from "playwright";
 import { getPage, navigateTo } from "./browser-manager.ts";
-import { sleep, dismissPopups, pickVisible, isOnLoginPage, humanReadPause } from "./humanize.ts";
+import { sleep, pickVisible, isOnLoginPage, humanReadPause, humanEnter } from "./humanize.ts";
 import { fillField, clickButton, uploadFile } from "./helpers.ts";
 import type { DraftData } from "./types.ts";
 
@@ -10,9 +10,9 @@ const VIDEO_URL = "https://member.bilibili.com/platform/upload/video/frame";
 const ARTICLE_URL = "https://member.bilibili.com/platform/upload/text/edit";
 
 const LIMITS = {
-  image_text: { text: 2000, maxImages: 9, maxTags: 5 },
-  video: { title: 30, desc: 250, maxTags: 10 },
-  article: { title: 30, body: 20000, maxImages: 50 },
+  image_text: { title: 20, text: 1000, maxImages: 18 },  // 动态
+  video: { title: 80, desc: 2000, maxTags: 10 },
+  article: { title: 30, body: 100000, maxImages: 50 },
 } as const;
 
 // ── Element fillers ──
@@ -43,7 +43,12 @@ async function addTags(page: Page, tags: string[], maxTags: number): Promise<voi
   const loc = await pickVisible(page, [
     () => page.getByPlaceholder(/(添加标签|标签)/),
   ], 2000);
-  if (loc) await fillField(page, loc, tags.slice(0, maxTags).join(", "));
+  if (!loc) return;
+  for (const tag of tags.slice(0, maxTags)) {
+    await fillField(page, loc, tag);
+    await page.keyboard.press("Enter");
+    await sleep(500);
+  }
 }
 
 async function doSubmit(page: Page): Promise<boolean> {
@@ -61,8 +66,9 @@ async function publishImageText(draft: DraftData): Promise<{ success: boolean; m
   if (isOnLoginPage(page)) {
     return { success: false, message: "未登录B站，请在 Edge 中打开 member.bilibili.com 手动登录后重试" };
   }
-  await dismissPopups(page);
+  await humanEnter(page);
 
+  await fillTitle(page, draft.title.slice(0, LIMITS.image_text.title));
   await fillTextarea(page, draft.content.slice(0, LIMITS.image_text.text));
 
   if (draft.images?.length) {
@@ -90,7 +96,7 @@ async function publishVideo(draft: DraftData): Promise<{ success: boolean; messa
   if (isOnLoginPage(page)) {
     return { success: false, message: "未登录B站，请在 Edge 中打开 member.bilibili.com 手动登录后重试" };
   }
-  await dismissPopups(page);
+  await humanEnter(page);
 
   await uploadFile(page, draft.video);
   await fillTitle(page, draft.title.slice(0, LIMITS.video.title));
@@ -116,7 +122,7 @@ async function publishArticle(draft: DraftData): Promise<{ success: boolean; mes
   if (isOnLoginPage(page)) {
     return { success: false, message: "未登录B站，请在 Edge 中打开 member.bilibili.com 手动登录后重试" };
   }
-  await dismissPopups(page);
+  await humanEnter(page);
 
   await fillTitle(page, draft.title.slice(0, LIMITS.article.title));
   await fillBody(page, draft.content.slice(0, LIMITS.article.body));

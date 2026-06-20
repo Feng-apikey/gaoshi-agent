@@ -2,6 +2,14 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
+import {
+  buildSkillIndex,
+  loadSkill,
+  searchSkills,
+  buildSkillIndexSummary,
+  extractFrontmatter,
+  setSkillsDirForTest,
+} from "../agent/skills/loader.ts";
 
 const sep = path.sep;
 
@@ -10,104 +18,10 @@ const sep = path.sep;
 const tmpDir = path.join(os.tmpdir(), `gaoshi_skills_test_${Date.now()}`);
 const SKILLS_DIR = path.join(tmpDir, "skills");
 
-function extractFrontmatter(raw: string, key: string): string | null {
-  const m = raw.match(new RegExp(`^${key}:\\s*(.+)$`, "m"));
-  return m ? m[1].trim() : null;
-}
-
-// Replicating tokenize (needed for skill search)
-function tokenize(text: string): string[] {
-  const cleaned = text.toLowerCase().replace(/[，。！？、；：""''（）\n\r]+/g, " ");
-  const chars = [...cleaned];
-  const tokens: string[] = [];
-  for (let i = 0; i < chars.length - 1; i++) {
-    const pair = chars[i] + chars[i + 1];
-    if (pair.trim().length >= 2 && !/^\s+$/.test(pair)) tokens.push(pair);
-  }
-  for (const ch of chars) {
-    if (/[一-鿿]/.test(ch)) tokens.push(ch);
-  }
-  for (const word of cleaned.split(/\s+/)) {
-    if (word.length >= 2 && /[a-z0-9]/.test(word)) tokens.push(word);
-  }
-  return [...new Set(tokens)];
-}
-
-interface SkillMeta {
-  name: string;
-  description: string;
-  path: string;
-}
-
-// ── Replicated functions from agent/skills/loader.ts ──
-
-function buildSkillIndex(): SkillMeta[] {
-  const results: SkillMeta[] = [];
-  if (!fs.existsSync(SKILLS_DIR)) return results;
-
-  function walk(dir: string, base = "") {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        walk(full, path.join(base, entry.name));
-      } else if (entry.name.endsWith(".md")) {
-        const raw = fs.readFileSync(full, "utf-8");
-        const name = extractFrontmatter(raw, "name") || path.basename(entry.name, ".md");
-        const desc = extractFrontmatter(raw, "description") || "";
-        results.push({ name, description: desc, path: path.join(base, entry.name) });
-      }
-    }
-  }
-  walk(SKILLS_DIR);
-  return results;
-}
-
-function loadSkill(nameOrPath: string): string | null {
-  const index = buildSkillIndex();
-  const meta = index.find(s => s.name === nameOrPath || s.path === nameOrPath);
-  if (!meta) return null;
-  const fullPath = path.join(SKILLS_DIR, meta.path);
-  try { return fs.readFileSync(fullPath, "utf-8"); } catch { return null; }
-}
-
-function searchSkills(query: string, topK = 5): SkillMeta[] {
-  const index = buildSkillIndex();
-  const tokens = tokenize(query);
-  if (tokens.length === 0) return index.slice(0, topK);
-  const scored = index.map(s => {
-    const text = `${s.name} ${s.description}`.toLowerCase();
-    let score = 0;
-    for (const t of tokens) { if (text.includes(t)) score += 1; }
-    return { ...s, score };
-  });
-  return scored
-    .filter(s => (s as any).score > 0)
-    .sort((a: any, b: any) => b.score - a.score)
-    .slice(0, topK)
-    .map(({ name, description, path: p }: any) => ({ name, description, path: p }));
-}
-
-function buildSkillIndexSummary(): string {
-  const results: SkillMeta[] = [];
-  if (!fs.existsSync(SKILLS_DIR)) return "";
-  for (const entry of fs.readdirSync(SKILLS_DIR, { withFileTypes: true })) {
-    if (entry.isFile() && entry.name.endsWith(".md")) {
-      const full = path.join(SKILLS_DIR, entry.name);
-      try {
-        const raw = fs.readFileSync(full, "utf-8");
-        const name = extractFrontmatter(raw, "name") || path.basename(entry.name, ".md");
-        const desc = extractFrontmatter(raw, "description") || "";
-        results.push({ name, description: desc, path: entry.name });
-      } catch {}
-    }
-  }
-  if (results.length === 0) return "";
-  return ["## 可用技能", "", ...results.map(s => `- \`${s.name}\` — ${s.description}`)].join("\n") + "\n";
-}
-
 // ── Setup test skills ──
 
 beforeAll(() => {
+  setSkillsDirForTest(SKILLS_DIR);
   fs.mkdirSync(path.join(SKILLS_DIR, "xiaohongshu"), { recursive: true });
   fs.mkdirSync(path.join(SKILLS_DIR, "bilibili"), { recursive: true });
 
@@ -158,6 +72,7 @@ beforeAll(() => {
 });
 
 afterAll(() => {
+  setSkillsDirForTest(null);
   try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
 });
 

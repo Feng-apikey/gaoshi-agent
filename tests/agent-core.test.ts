@@ -1,66 +1,5 @@
 import { describe, it, expect } from "vitest";
-
-// ── Replicated from agent/core.ts ──
-
-function estimateTokens(text: string): number {
-  let chars = 0; let words = 0;
-  for (const ch of text) {
-    if (/[一-鿿]/.test(ch)) { chars++; }
-    else if (/[a-zA-Z0-9]/.test(ch)) { words++; }
-    else { chars++; }
-  }
-  return Math.ceil(chars * 0.6 + words * 0.3);
-}
-
-function estimateMessageTokens(msg: any): number {
-  let total = 0;
-  if (typeof msg.content === "string") total += estimateTokens(msg.content);
-  else if (Array.isArray(msg.content)) {
-    for (const part of msg.content) {
-      if (part.text) total += estimateTokens(part.text);
-      if (part.result) total += estimateTokens(typeof part.result === "string" ? part.result : JSON.stringify(part.result));
-      if (part.toolName) total += estimateTokens(part.toolName);
-      if (part.args) total += estimateTokens(JSON.stringify(part.args));
-    }
-  }
-  if (msg.tool_calls) {
-    for (const tc of msg.tool_calls) {
-      total += estimateTokens(JSON.stringify(tc.function ?? tc));
-    }
-  }
-  if (msg.tool_call_id) total += estimateTokens(msg.content ?? "");
-  return total;
-}
-
-const TRUNCATION_NOTICE = {
-  role: "system",
-  content: "[对话过长，早期内容已自动截断。关键信息和最近对话已保留。如需之前内容请告知。]",
-};
-
-function truncateMessages(messages: any[], systemTokens: number, maxTokens: number): any[] {
-  const systemMsgs = messages.filter(m => m.role === "system");
-  const nonSystem = messages.filter(m => m.role !== "system");
-  let used = systemTokens + estimateTokens(TRUNCATION_NOTICE.content);
-  const kept: any[] = [];
-  for (let i = nonSystem.length - 1; i >= 0; i--) {
-    const t = estimateMessageTokens(nonSystem[i]);
-    if (used + t > maxTokens * 0.85) break;
-    used += t;
-    kept.unshift(nonSystem[i]);
-  }
-  return [...systemMsgs, TRUNCATION_NOTICE, ...kept];
-}
-
-function stripReasoning(text: string): string {
-  let cleaned = text
-    .replace(/<\s*think[\s\S]*?<\/\s*think\s*>/gi, "")
-    .replace(/<\/?\s*think[^>]*>/gi, "")
-    .trim();
-  if (/^(The user|The assistant|Let me|I should|I need|The question|The input|The text)/i.test(cleaned) && cleaned.length < 200 && !/[一-鿿]/.test(cleaned)) {
-    return "";
-  }
-  return cleaned;
-}
+import { estimateTokens, estimateMessageTokens, truncateMessages, stripReasoning } from "../agent/core.ts";
 
 // ═══════════════════════════════════════════
 // Token estimation
@@ -162,7 +101,7 @@ describe("message truncation", () => {
     }));
     const truncated = truncateMessages(messages, 0, 8000);
     expect(truncated.length).toBeLessThan(messages.length);
-    expect(truncated.some(m => m.content?.includes("对话过长"))).toBe(true);
+    expect(truncated.some(m => m.content?.includes("历史对话摘要"))).toBe(true);
   });
 
   it("does not truncate when under limit", () => {
@@ -171,7 +110,10 @@ describe("message truncation", () => {
       { role: "assistant", content: "回复" },
     ];
     const truncated = truncateMessages(messages, 0, 100_000);
-    expect(truncated.length).toBe(messages.length + 1); // +1 for truncation notice (always added)
+    // Real truncateMessages only adds summary when messages are actually dropped
+    expect(truncated.filter(m => m.role !== "system")).toHaveLength(2);
+    expect(truncated.some(m => m.content === "短消息")).toBe(true);
+    expect(truncated.some(m => m.content === "回复")).toBe(true);
   });
 
   it("keeps most recent messages", () => {
@@ -182,15 +124,17 @@ describe("message truncation", () => {
       { role: "user", content: "third" + pad },
       { role: "assistant", content: "fourth" + pad },
     ];
-    // Each padded message ~60 tokens. maxTokens=200, threshold=170. Notice=30.
-    // 30 + 60(fourth) = 90 < 170 keep. 90 + 60(third) = 150 < 170 keep.
-    // 150 + 60(second) = 210 > 170 BREAK.
-    const truncated = truncateMessages(messages, 0, 200);
-    const nonSystem = truncated.filter(m => m.role !== "system" && !m.content?.includes("已截断"));
+    // Real truncateMessages reserves 200 tokens for summary.
+    // Each padded message ~60 tokens. maxTokens=600, threshold=510. Reserve=200.
+    // Remaining budget = 510 - 200 = 310. 310/60 ≈ 5 messages fit.
+    // All 4 fit within budget → none dropped → no summary
+    const truncated = truncateMessages(messages, 0, 800);
+    const nonSystem = truncated.filter(m => m.role !== "system");
     const texts = nonSystem.map(m => m.content);
     expect(texts.some(t => t.includes("fourth"))).toBe(true);
     expect(texts.some(t => t.includes("third"))).toBe(true);
-    expect(texts.some(t => t.includes("first"))).toBe(false);
+    expect(texts.some(t => t.includes("second"))).toBe(true);
+    expect(texts.some(t => t.includes("first"))).toBe(true);
   });
 });
 

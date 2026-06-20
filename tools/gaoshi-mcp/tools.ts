@@ -18,32 +18,6 @@ function db(): Database.Database {
   return _db;
 }
 
-// ── Files ──
-
-function safePath(subpath: string): string {
-  const full = path.resolve(DATA_DIR, subpath);
-  if (!full.startsWith(path.resolve(DATA_DIR))) throw new Error("路径越界");
-  return full;
-}
-
-export function readFile(subpath: string, encoding = "utf-8") {
-  const p = safePath(subpath);
-  if (!fs.existsSync(p)) throw new Error("文件不存在");
-  const content = fs.readFileSync(p, encoding as BufferEncoding);
-  if (Buffer.isBuffer(content)) return { type: "binary", size: content.length };
-  return { content: content.slice(0, 50000), path: subpath };
-}
-
-export function listFiles(subdir = "") {
-  const dir = safePath(subdir || ".");
-  if (!fs.existsSync(dir)) return [];
-  return fs.readdirSync(dir).map(name => {
-    const p = path.join(dir, name);
-    const stat = fs.statSync(p);
-    return { name, isDirectory: stat.isDirectory(), size: stat.size };
-  });
-}
-
 // ── System ──
 
 export function systemStatus() {

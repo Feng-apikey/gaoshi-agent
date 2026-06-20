@@ -1,21 +1,60 @@
 import type { Page, Locator } from "playwright";
 import { getPage, navigateTo } from "./browser-manager.ts";
-import { sleep, dismissPopups, pickVisible, humanReadPause, isOnLoginPage, withIdleMouseMove } from "./humanize.ts";
-import { fillField, clickButton, addTagsInline } from "./helpers.ts";
+import { sleep, pickVisible, humanReadPause, isOnLoginPage, humanEnter, humanClick } from "./humanize.ts";
+import { fillField, clickButton, uploadFile } from "./helpers.ts";
 import type { DraftData } from "./types.ts";
 
 const CREATOR_URL = "https://creator.douyin.com";
-const POST_IMAGE_URL = "https://creator.douyin.com/creator-micro/content/post/image";
-const POST_VIDEO_URL = "https://creator.douyin.com/creator-micro/content/post/video";
-const POST_ARTICLE_URL = "https://creator.douyin.com/creator-micro/content/post/article";
 
 const LIMITS = {
   image_text: { title: 20, body: 1000, maxTags: 5 },
-  video: { title: 30, body: 500, maxTags: 5 },
+  video: { title: 30, body: 1000, maxTags: 5 },
   article: { title: 30, body: 8000, abstract: 30, maxTags: 5, maxImages: 50 },
 } as const;
 
 // ── Element finders ──
+
+async function clickToContentEditor(page: Page, ct: string): Promise<boolean> {
+  const entryMap: Record<string, RegExp[]> = {
+    image_text: [/发布图文/, /图文/],
+    video: [/发布视频/, /上传视频/],
+    article: [/发布文章/, /写文章/, /文章/],
+  };
+  const patterns = entryMap[ct];
+  if (!patterns) return false;
+
+  // Try buttons first, then links
+  for (const pat of patterns) {
+    try {
+      const btn = page.getByRole("button", { name: pat }).first();
+      if (await btn.isVisible({ timeout: 2000 })) {
+        await humanClick(page, btn);
+        await sleep(2000);
+        return true;
+      }
+    } catch {}
+  }
+  for (const pat of patterns) {
+    try {
+      const link = page.getByRole("link", { name: pat }).first();
+      if (await link.isVisible({ timeout: 2000 })) {
+        await humanClick(page, link);
+        await sleep(2000);
+        return true;
+      }
+    } catch {}
+  }
+  // Fallback: click any visible text match
+  for (const pat of patterns) {
+    const el = page.getByText(pat).first();
+    if (await el.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await humanClick(page, el);
+      await sleep(2000);
+      return true;
+    }
+  }
+  return false;
+}
 
 async function findTitleInput(page: Page): Promise<Locator | null> {
   return pickVisible(page, [
@@ -28,12 +67,6 @@ async function findBodyEditor(page: Page): Promise<Locator | null> {
     () => page.getByRole("textbox", { name: /(正文|描述|内容|说点什么)/ }),
     () => page.locator("[contenteditable='true']:visible").first(),
   ], 2000);
-}
-
-async function findTagInput(page: Page): Promise<Locator | null> {
-  return pickVisible(page, [
-    () => page.getByPlaceholder(/(话题|添加标签|标签)/),
-  ]);
 }
 
 async function findAbstractInput(page: Page): Promise<Locator | null> {
@@ -50,21 +83,27 @@ async function submitDraft(page: Page): Promise<boolean> {
 // ── Image Text ──
 
 async function publishImageText(draft: DraftData): Promise<{ success: boolean; message: string }> {
-  await navigateTo("douyin", POST_IMAGE_URL);
+  await navigateTo("douyin", CREATOR_URL);
   await sleep(2000);
   const page = await getPage("douyin");
   if (isOnLoginPage(page)) {
     return { success: false, message: "未登录抖音，请在 Edge 中打开 creator.douyin.com 手动登录后重试" };
   }
-  await dismissPopups(page);
+  await humanEnter(page);
+  await clickToContentEditor(page, "image_text");
+
+  if (draft.images?.length) {
+    for (const img of draft.images.slice(0, LIMITS.image_text.maxImages)) {
+      await uploadFile(page, img);
+      await sleep(3000);
+    }
+  }
 
   const titleInput = await findTitleInput(page);
   if (titleInput) await fillField(page, titleInput, draft.title.slice(0, LIMITS.image_text.title));
 
   const editor = await findBodyEditor(page);
   if (editor) await fillField(page, editor, draft.content.slice(0, LIMITS.image_text.body));
-
-  await addTagsInline(page, () => findBodyEditor(page), draft.tags, LIMITS.image_text.maxTags);
 
   if (await submitDraft(page)) {
     return { success: true, message: `已保存到抖音草稿箱：${draft.title}` };
@@ -77,30 +116,16 @@ async function publishImageText(draft: DraftData): Promise<{ success: boolean; m
 async function publishVideo(draft: DraftData): Promise<{ success: boolean; message: string }> {
   if (!draft.video) return { success: false, message: "草稿缺少视频文件" };
 
-  await navigateTo("douyin", POST_VIDEO_URL);
+  await navigateTo("douyin", CREATOR_URL);
   await sleep(2000);
   const page = await getPage("douyin");
   if (isOnLoginPage(page)) {
     return { success: false, message: "未登录抖音，请在 Edge 中打开 creator.douyin.com 手动登录后重试" };
   }
-  await dismissPopups(page);
+  await humanEnter(page);
+  await clickToContentEditor(page, "video");
 
-  const uploadZone = page.getByText(/点击上传|上传视频/).first();
-  if (await uploadZone.isVisible({ timeout: 5000 })) {
-    const [fileChooser] = await Promise.all([
-      page.waitForEvent("filechooser", { timeout: 5000 }),
-      uploadZone.click(),
-    ]);
-    await fileChooser.setFiles(draft.video);
-    await withIdleMouseMove(page, async () => {
-      try {
-        await page.waitForSelector("video", { timeout: 120000 });
-      } catch {
-        await page.waitForLoadState("networkidle", { timeout: 60000 }).catch(() => {});
-      }
-    });
-    await sleep(2000);
-  }
+  await uploadFile(page, draft.video);
 
   const titleInput = await findTitleInput(page);
   if (titleInput) await fillField(page, titleInput, draft.title.slice(0, LIMITS.video.title));
@@ -109,13 +134,6 @@ async function publishVideo(draft: DraftData): Promise<{ success: boolean; messa
     () => page.getByPlaceholder(/(视频描述|描述|简介)/),
   ]);
   if (descInput) await fillField(page, descInput, draft.content.slice(0, LIMITS.video.body));
-
-  if (draft.tags?.length) {
-    const tagInput = await findTagInput(page);
-    if (tagInput) {
-      await fillField(page, tagInput, draft.tags.slice(0, LIMITS.video.maxTags).join(", "));
-    }
-  }
 
   if (await submitDraft(page)) {
     return { success: true, message: `视频已保存到抖音草稿箱：${draft.title}` };
@@ -126,13 +144,14 @@ async function publishVideo(draft: DraftData): Promise<{ success: boolean; messa
 // ── Article ──
 
 async function publishArticle(draft: DraftData): Promise<{ success: boolean; message: string }> {
-  await navigateTo("douyin", POST_ARTICLE_URL);
+  await navigateTo("douyin", CREATOR_URL);
   await sleep(2000);
   const page = await getPage("douyin");
   if (isOnLoginPage(page)) {
     return { success: false, message: "未登录抖音，请在 Edge 中打开 creator.douyin.com 手动登录后重试" };
   }
-  await dismissPopups(page);
+  await humanEnter(page);
+  await clickToContentEditor(page, "article");
 
   const titleInput = await findTitleInput(page);
   if (titleInput) await fillField(page, titleInput, draft.title.slice(0, LIMITS.article.title));
@@ -144,8 +163,6 @@ async function publishArticle(draft: DraftData): Promise<{ success: boolean; mes
 
   const editor = await findBodyEditor(page);
   if (editor) await fillField(page, editor, draft.content.slice(0, LIMITS.article.body));
-
-  await addTagsInline(page, () => findBodyEditor(page), draft.tags, LIMITS.article.maxTags);
 
   if (await submitDraft(page)) {
     return { success: true, message: `长文已保存到抖音草稿箱：${draft.title}` };

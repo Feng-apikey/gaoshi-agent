@@ -27,7 +27,7 @@ export function retrieve(query: string, options?: {
       const valid = entry && !isExpired(entry) ? entry : null;
       return {
         entry: {
-          name: r.name,
+          name: valid?.name ?? r.name,
           description: valid?.description ?? "",
           type: valid?.type ?? "reference",
           updatedAt: valid?.updatedAt ?? "",

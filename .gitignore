@@ -20,3 +20,5 @@ tools/douyin-mcp/e2e-mcp-check.mjs
 tools/douyin-mcp/test-data.mjs
 
 *.tmp
+api/static/index.html
+publish/_screenshots/

@@ -8,18 +8,20 @@ interface AppSettings {
   autoApprove: boolean;
 }
 
-function load(): AppSettings {
+export function load(filePath?: string): AppSettings {
+  const p = filePath ?? SETTINGS_FILE;
   try {
-    if (fs.existsSync(SETTINGS_FILE)) {
-      return JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf-8"));
+    if (fs.existsSync(p)) {
+      return JSON.parse(fs.readFileSync(p, "utf-8"));
     }
   } catch {}
   return { autoApprove: false };
 }
 
-function save(settings: AppSettings): void {
-  fs.mkdirSync(path.dirname(SETTINGS_FILE), { recursive: true });
-  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
+export function save(settings: AppSettings, filePath?: string): void {
+  const p = filePath ?? SETTINGS_FILE;
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  fs.writeFileSync(p, JSON.stringify(settings, null, 2));
 }
 
 export function getAutoApprove(): boolean {

@@ -88,6 +88,11 @@ function toFrontmatter(entry: MemoryEntry): string {
 let _allCache: MemoryEntry[] | null = null;
 function clearCache(): void { _allCache = null; }
 
+function ensureCache(): MemoryEntry[] {
+  if (_allCache) return _allCache;
+  return loadAll();
+}
+
 export function loadAll(): MemoryEntry[] {
   if (_allCache) return _allCache;
 
@@ -140,23 +145,43 @@ export function save(entry: MemoryEntry): void {
   const p = filePath(entry.name, entry.type);
   ensureDir(path.dirname(p));
   fs.writeFileSync(p, toFrontmatter(entry), "utf-8");
-  clearCache();
-  rebuildIndex();
+
+  // Update cache in-memory instead of re-scanning disk
+  const cache = ensureCache();
+  const idx = cache.findIndex(e => e.name === entry.name && e.type === entry.type);
+  if (idx >= 0) {
+    cache[idx] = entry;
+  } else {
+    cache.push(entry);
+  }
+  cache.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  buildIndex(cache);
+  writeIndexSummary();
 }
 
 export function remove(name: string, type?: MemoryType): void {
   const types = type ? [type] : (["user", "project", "reference"] as MemoryType[]);
+  let deletedType: string | null = null;
   for (const t of types) {
     const p = filePath(name, t);
-    if (fs.existsSync(p)) { fs.unlinkSync(p); break; }
+    if (fs.existsSync(p)) { fs.unlinkSync(p); deletedType = t; break; }
   }
-  clearCache();
-  rebuildIndex();
+
+  // Update cache in-memory: only remove the type that was actually deleted from disk
+  if (deletedType) {
+    if (_allCache) {
+      _allCache = _allCache.filter(e => !(e.name === name && e.type === deletedType));
+      buildIndex(_allCache);
+      writeIndexSummary();
+    } else {
+      // Cache was never loaded — populate from disk (file already gone)
+      loadAll();
+    }
+  }
 }
 
-function rebuildIndex(): void {
-  const entries = loadAll();
-
+function writeIndexSummary(): void {
+  const entries = _allCache ?? [];
   const groups: Record<string, MemoryEntry[]> = { user: [], project: [], reference: [] };
   for (const e of entries) groups[e.type].push(e);
 

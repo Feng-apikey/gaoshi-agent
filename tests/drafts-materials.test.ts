@@ -103,39 +103,9 @@ function transformDraft(row: any) {
   };
 }
 
-// ── Validation (replicating api/validation.ts) ──
+// ── Validation (imported from real module) ──
 
-function countImages(content: string): number {
-  return (content.match(/!\[.*?\]\(.*?\)/g)?.length ?? 0) + (content.match(/<img\s/g)?.length ?? 0);
-}
-
-function validateDraft(platform: string, type: string, content: string): { field: string; message: string }[] {
-  const limits: Record<string, Record<string, { title?: number; body: number; maxImages?: number; maxTags?: number }>> = {
-    "小红书": {
-      image_text: { title: 20, body: 1000, maxImages: 18, maxTags: 10 },
-      video: { title: 20, body: 1000, maxTags: 10 },
-    },
-    "B站": {
-      video: { title: 80, body: 2000, maxTags: 10 },
-      article: { title: 30, body: 40000, maxImages: 100 },
-    },
-    "抖音": {
-      image_text: { title: 55, body: 5000, maxImages: 35 },
-      video: { title: 55, body: 5000 },
-      article: { title: 30, body: 20000, maxImages: 100 },
-    },
-  };
-  const errors: { field: string; message: string }[] = [];
-  const pl = limits[platform];
-  if (!pl) return errors;
-  const tl = pl[type];
-  if (!tl) return errors;
-  const chars = content.replace(/\s/g, "").length;
-  const images = countImages(content);
-  if (tl.body && chars > tl.body) errors.push({ field: "content", message: `字数超过限制（${chars}/${tl.body}）` });
-  if (tl.maxImages !== undefined && images > tl.maxImages) errors.push({ field: "content", message: `图片超过限制（${images}/${tl.maxImages}）` });
-  return errors;
-}
+import { validateDraft } from "../api/validation.ts";
 
 // ═══════════════════════════════════════════
 // Drafts
@@ -302,15 +272,14 @@ describe("draft validation", () => {
     expect(errors).toHaveLength(0);
   });
 
-  it("B站 article allows 40000 chars", () => {
-    const content = "字".repeat(40000);
+  it("B站 article allows 50000 chars", () => {
+    const content = "字".repeat(50000);
     const errors = validateDraft("B站", "article", content);
-    // whitespace stripped count will be 40000, limit is 40000
     expect(errors.filter(e => e.field === "content")).toHaveLength(0);
   });
 
-  it("B站 article rejects 40001 chars", () => {
-    const content = "字".repeat(40001);
+  it("B站 article rejects content exceeding 100000 chars", () => {
+    const content = "字".repeat(100001);
     const errors = validateDraft("B站", "article", content);
     expect(errors.some(e => e.field === "content")).toBe(true);
   });

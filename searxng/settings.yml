@@ -1,0 +1,36 @@
+use_default_settings: true
+
+search:
+  safe_search: 0
+  formats:
+    - html
+    - json
+
+server:
+  secret_key: "gaoshi-pure-searxng-local-2026"
+  bind_address: "0.0.0.0"
+  limiter: false
+  image_proxy: false
+
+engines:
+  - name: bing
+    engine: bing
+    shortcut: bi
+    disabled: false
+
+  - name: baidu
+    engine: baidu
+    shortcut: bd
+    disabled: false
+
+  - name: google
+    disabled: true
+
+  - name: duckduckgo
+    disabled: true
+
+  - name: wikipedia
+    disabled: true
+
+  - name: brave
+    disabled: true

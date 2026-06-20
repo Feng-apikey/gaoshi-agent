@@ -1,23 +1,5 @@
 import { describe, it, expect } from "vitest";
-
-// ═══════════════════════════════════════════
-// Replicate from api/routes/chat.ts
-// ═══════════════════════════════════════════
-
-const DANGEROUS_TOOLS = new Set([
-  "file_write", "file_move", "file_delete",
-]);
-
-function isDangerous(name: string): boolean {
-  if (DANGEROUS_TOOLS.has(name)) return true;
-  if (name.startsWith("exec")) return true;
-  return false;
-}
-
-function allWhitelisted(pendingToolCalls: Array<{ name: string }>, autoApprove: boolean): boolean {
-  if (autoApprove) return true;
-  return pendingToolCalls.length > 0 && !pendingToolCalls.some(tc => isDangerous(tc.name));
-}
+import { isDangerous, allWhitelisted } from "../api/routes/chat.ts";
 
 // ═══════════════════════════════════════════
 // isDangerous

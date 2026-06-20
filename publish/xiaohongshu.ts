@@ -1,19 +1,74 @@
 import type { Page, Locator } from "playwright";
 import { getPage, navigateTo } from "./browser-manager.ts";
-import { sleep, dismissPopups, pickVisible, isOnLoginPage, humanReadPause } from "./humanize.ts";
-import { fillField, clickButton, addTagsInline, uploadFile } from "./helpers.ts";
+import { sleep, pickVisible, isOnLoginPage, humanReadPause, humanEnter, humanClick } from "./humanize.ts";
+import { fillField, clickButton, uploadFile } from "./helpers.ts";
 import type { DraftData } from "./types.ts";
-import { existsSync } from "node:fs";
 
 const CREATOR_URL = "https://creator.xiaohongshu.com";
 const DASHBOARD_URL = "https://creator.xiaohongshu.com/publish";
 const PUBLISH_URL = "https://creator.xiaohongshu.com/publish/publish";
 
 const LIMITS = {
-  image_text: { title: 20, body: 1000, maxTags: 10, maxImages: 9 },
+  image_text: { title: 20, body: 1000, maxTags: 10, maxImages: 18 },
   video: { title: 20, body: 1000, maxTags: 10 },
-  article: { title: 20, body: 6000, maxTags: 10 },
+  article: { title: 64, body: 8000 },
 } as const;
+
+// ── Content type tab switching ──
+
+async function clickToContentEditor(page: Page, ct: string): Promise<boolean> {
+  const entryMap: Record<string, RegExp[]> = {
+    image_text: [/上传图文/, /图文/],
+    video: [/上传视频/, /视频/],
+    article: [/写长文/, /长文/, /笔记/],
+  };
+  const patterns = entryMap[ct];
+  if (!patterns) return false;
+
+  // Try buttons first
+  for (const pat of patterns) {
+    try {
+      const btn = page.getByRole("button", { name: pat }).first();
+      if (await btn.isVisible({ timeout: 2000 })) {
+        await humanClick(page, btn);
+        await sleep(1500);
+        return true;
+      }
+    } catch {}
+  }
+  // Then links
+  for (const pat of patterns) {
+    try {
+      const link = page.getByRole("link", { name: pat }).first();
+      if (await link.isVisible({ timeout: 2000 })) {
+        await humanClick(page, link);
+        await sleep(1500);
+        return true;
+      }
+    } catch {}
+  }
+  // Fallback: tab elements
+  for (const pat of patterns) {
+    try {
+      const tab = page.getByRole("tab", { name: pat }).first();
+      if (await tab.isVisible({ timeout: 2000 })) {
+        await humanClick(page, tab);
+        await sleep(1500);
+        return true;
+      }
+    } catch {}
+  }
+  // Last resort: any visible text match
+  for (const pat of patterns) {
+    const el = page.getByText(pat).first();
+    if (await el.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await humanClick(page, el);
+      await sleep(1500);
+      return true;
+    }
+  }
+  return false;
+}
 
 // ── Element fillers ──
 
@@ -30,12 +85,6 @@ async function fillBody(page: Page, body: string): Promise<void> {
   if (loc) await fillField(page, loc, body);
 }
 
-function bodyEditorFinder(page: Page): () => Promise<Locator | null> {
-  return () => pickVisible(page, [
-    () => page.getByRole("textbox", { name: /(正文|内容)/ }),
-    () => page.locator("[contenteditable='true']:visible").first(),
-  ]);
-}
 
 async function doSubmit(page: Page): Promise<boolean> {
   await humanReadPause();
@@ -52,7 +101,8 @@ async function publishImageText(draft: DraftData): Promise<{ success: boolean; m
   if (isOnLoginPage(page)) {
     return { success: false, message: "未登录小红书，请在 Edge 中打开 creator.xiaohongshu.com 手动登录后重试" };
   }
-  await dismissPopups(page);
+  await humanEnter(page);
+  await clickToContentEditor(page, "image_text");
 
   if (draft.images?.length) {
     for (const img of draft.images.slice(0, LIMITS.image_text.maxImages)) {
@@ -63,7 +113,6 @@ async function publishImageText(draft: DraftData): Promise<{ success: boolean; m
 
   await fillTitle(page, draft.title.slice(0, LIMITS.image_text.title));
   await fillBody(page, draft.content.slice(0, LIMITS.image_text.body));
-  await addTagsInline(page, bodyEditorFinder(page), draft.tags, LIMITS.image_text.maxTags);
 
   if (!(await doSubmit(page))) {
     return { success: false, message: "找不到保存草稿按钮" };
@@ -83,12 +132,12 @@ async function publishVideo(draft: DraftData): Promise<{ success: boolean; messa
   if (isOnLoginPage(page)) {
     return { success: false, message: "未登录小红书，请在 Edge 中打开 creator.xiaohongshu.com 手动登录后重试" };
   }
-  await dismissPopups(page);
+  await humanEnter(page);
+  await clickToContentEditor(page, "video");
 
   await uploadFile(page, draft.video);
   await fillTitle(page, draft.title.slice(0, LIMITS.video.title));
   await fillBody(page, draft.content.slice(0, LIMITS.video.body));
-  await addTagsInline(page, bodyEditorFinder(page), draft.tags, LIMITS.video.maxTags);
 
   if (!(await doSubmit(page))) {
     return { success: false, message: "找不到保存草稿按钮" };
@@ -106,23 +155,10 @@ async function publishArticle(draft: DraftData): Promise<{ success: boolean; mes
   if (isOnLoginPage(page)) {
     return { success: false, message: "未登录小红书，请在 Edge 中打开 creator.xiaohongshu.com 手动登录后重试" };
   }
-  await dismissPopups(page);
+  await humanEnter(page);
+  await clickToContentEditor(page, "article");
 
-  if (draft.cover) {
-    if (existsSync(draft.cover)) {
-      const coverZone = await pickVisible(page, [
-        () => page.getByText(/上传封面|添加封面|封面|头图/),
-      ], 2000);
-      if (coverZone) {
-        const [fc] = await Promise.all([
-          page.waitForEvent("filechooser", { timeout: 5000 }),
-          coverZone.click(),
-        ]);
-        await fc.setFiles(draft.cover);
-        await sleep(3000);
-      }
-    }
-  }
+  if (draft.cover) await uploadFile(page, draft.cover);
 
   await fillTitle(page, draft.title.slice(0, LIMITS.article.title));
   await fillBody(page, draft.content.slice(0, LIMITS.article.body));
@@ -133,8 +169,6 @@ async function publishArticle(draft: DraftData): Promise<{ success: boolean; mes
     ]);
     if (abstractLoc) await fillField(page, abstractLoc, draft.abstract.slice(0, 60));
   }
-
-  await addTagsInline(page, bodyEditorFinder(page), draft.tags, LIMITS.article.maxTags);
 
   if (!(await doSubmit(page))) {
     return { success: false, message: "找不到保存草稿按钮" };

@@ -24,17 +24,43 @@ console.log(`  Node.js ${process.version} ✓`);
 step("2/7  Install dependencies (UI)");
 run("npm install", path.join(ROOT, "ui"));
 
-// 3. Install Playwright Chromium
-step("3/7  Install Playwright Chromium");
-run("npx playwright install chromium");
-
-// 4. Build MCP
-step("4/7  Build gaoshi-mcp");
+// 3. Build MCP
+step("3/7  Build gaoshi-mcp");
 run("npm run build:mcp");
 
-// 5. Build UI
-step("5/7  Build UI");
+// 4. Build UI
+step("4/7  Build UI");
 run("npm run build:ui");
+
+// 5. Init SearXNG
+step("5/7  Init SearXNG");
+const searxngDir = path.join(ROOT, "searxng");
+const hasDocker = (() => {
+  try { execSync("docker --version", { stdio: "pipe" }); return true; } catch { return false; }
+})();
+
+if (!hasDocker) {
+  warn("Docker not found — skip SearXNG. Web search will fall back to Bing API.");
+} else {
+  // Generate configs if missing
+  const settingsPath = path.join(searxngDir, "settings.yml");
+  const composePath = path.join(searxngDir, "docker-compose.yml");
+  if (!fs.existsSync(settingsPath)) {
+    warn("searxng/settings.yml missing — SearXNG won't start.");
+  }
+  if (!fs.existsSync(composePath)) {
+    warn("searxng/docker-compose.yml missing — SearXNG won't start.");
+  }
+  if (fs.existsSync(settingsPath) && fs.existsSync(composePath)) {
+    try {
+      console.log("  docker compose up -d ...");
+      execSync("docker compose up -d", { cwd: searxngDir, stdio: "inherit" });
+      console.log("  SearXNG running at http://localhost:8888 ✓");
+    } catch {
+      warn("docker compose failed. Is Docker Desktop running?");
+    }
+  }
+}
 
 // 6. Init runtime directories
 step("6/7  Init runtime directories");

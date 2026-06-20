@@ -6,6 +6,10 @@ type InvertedIndex = Map<string, Set<string>>;
 let _index: InvertedIndex | null = null;
 let _entries: MemoryEntry[] = [];
 
+function entryKey(name: string, type: string): string {
+  return `${type}::${name}`;
+}
+
 export function buildIndex(entries: MemoryEntry[]): void {
   _entries = entries;
   _index = new Map();
@@ -15,7 +19,7 @@ export function buildIndex(entries: MemoryEntry[]): void {
     const tokens = tokenize(text);
     for (const token of tokens) {
       if (!_index.has(token)) _index.set(token, new Set());
-      _index.get(token)!.add(entry.name);
+      _index.get(token)!.add(entryKey(entry.name, entry.type));
     }
   }
 }
@@ -29,11 +33,11 @@ export function search(query: string): Array<{ name: string; score: number }> {
   for (const token of queryTokens) {
     const matches = _index.get(token);
     if (!matches) continue;
-    for (const name of matches) scores.set(name, (scores.get(name) ?? 0) + 1);
+    for (const key of matches) scores.set(key, (scores.get(key) ?? 0) + 1);
   }
 
   return [...scores.entries()]
-    .map(([name, hits]) => ({ name, score: hits / queryTokens.length }))
+    .map(([key, hits]) => ({ name: key, score: hits / queryTokens.length }))
     .sort((a, b) => b.score - a.score);
 }
 
@@ -41,6 +45,13 @@ export function listByType(type: string): MemoryEntry[] {
   return _entries.filter(e => e.type === type);
 }
 
-export function getCached(name: string): MemoryEntry | null {
-  return _entries.find(e => e.name === name) ?? null;
+export function getCached(key: string): MemoryEntry | null {
+  // key format: "type::name" from search results, or bare name for backward compat
+  const colonIdx = key.indexOf("::");
+  if (colonIdx !== -1) {
+    const type = key.slice(0, colonIdx);
+    const name = key.slice(colonIdx + 2);
+    return _entries.find(e => e.name === name && e.type === type) ?? null;
+  }
+  return _entries.find(e => e.name === key) ?? null;
 }

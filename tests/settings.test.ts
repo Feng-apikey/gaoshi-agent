@@ -2,32 +2,15 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
+import { load as _load, save as _save } from "../api/routes/settings.ts";
 
-// Replicate settings.ts logic in isolation
+// Use temp directory for isolated testing
 const tmpDir = path.join(os.tmpdir(), `gaoshi_settings_test_${Date.now()}`);
 const SETTINGS_FILE = path.join(tmpDir, "config", "settings.json");
 
-interface AppSettings {
-  autoApprove: boolean;
-}
-
-function load(): AppSettings {
-  try {
-    if (fs.existsSync(SETTINGS_FILE)) {
-      return JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf-8"));
-    }
-  } catch {}
-  return { autoApprove: false };
-}
-
-function save(settings: AppSettings): void {
-  fs.mkdirSync(path.dirname(SETTINGS_FILE), { recursive: true });
-  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
-}
-
-function getAutoApprove(): boolean {
-  return load().autoApprove;
-}
+// Wrap real functions with test file path (settings.ts supports optional path override)
+const load = () => _load(SETTINGS_FILE);
+const save = (s: { autoApprove: boolean }) => _save(s, SETTINGS_FILE);
 
 beforeAll(() => {
   fs.mkdirSync(path.dirname(SETTINGS_FILE), { recursive: true });
@@ -53,10 +36,10 @@ describe("settings load/save", () => {
 
   it("getAutoApprove returns the saved value", () => {
     save({ autoApprove: true });
-    expect(getAutoApprove()).toBe(true);
+    expect(load().autoApprove).toBe(true);
 
     save({ autoApprove: false });
-    expect(getAutoApprove()).toBe(false);
+    expect(load().autoApprove).toBe(false);
   });
 
   it("partial update preserves existing values", () => {

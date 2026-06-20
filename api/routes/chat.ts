@@ -18,15 +18,35 @@ const DANGEROUS_TOOLS = new Set([
   "file_write", "file_move", "file_delete",
 ]);
 
-function isDangerous(name: string): boolean {
+export function isDangerous(name: string): boolean {
   if (DANGEROUS_TOOLS.has(name)) return true;
   if (name.startsWith("exec")) return true;
   return false;
 }
 
-function allWhitelisted(pendingToolCalls: Array<{ name: string }>): boolean {
-  if (getAutoApprove()) return true;
+export function allWhitelisted(pendingToolCalls: Array<{ name: string }>, autoApproveOverride?: boolean): boolean {
+  if (autoApproveOverride ?? getAutoApprove()) return true;
   return pendingToolCalls.length > 0 && !pendingToolCalls.some(tc => isDangerous(tc.name));
+}
+
+// ── Error sanitization: prevent leaking provider errors / file paths to frontend ──
+
+const ERROR_WHITELIST: Array<{ pattern: RegExp; message: string }> = [
+  { pattern: /api.?key|auth|unauthorized|invalid.*key|401|403/i, message: "API 认证失败，请检查提供商 API Key 是否正确" },
+  { pattern: /rate.?limit|too many|429/i, message: "请求太频繁，请稍后重试" },
+  { pattern: /timeout|timed.?out/i, message: "请求超时，请检查网络或提供商状态" },
+  { pattern: /insufficient.*quota|billing|quota.*exceeded/i, message: "API 配额不足，请检查账户余额" },
+  { pattern: /ENOENT|ENOTDIR|ENAMETOOLONG/i, message: "文件操作失败，请检查素材路径" },
+  { pattern: /ECONNREFUSED|ECONNRESET|ENETUNREACH|EHOSTUNREACH/i, message: "网络连接失败，请检查网络设置" },
+];
+
+function sanitizeError(err: unknown): string {
+  if (!(err instanceof Error)) return "未知错误，请查看服务端日志";
+  const msg = err.message ?? "";
+  for (const { pattern, message } of ERROR_WHITELIST) {
+    if (pattern.test(msg)) return message;
+  }
+  return "服务内部错误，请查看终端日志获取详情";
 }
 
 export const chatRouter = new Hono();
@@ -85,9 +105,11 @@ function getThread(threadId: string): ThreadState {
 // ── POST /api/chat — enqueue message, stream when ready ──
 
 chatRouter.post("/", async (c) => {
-  const body = await c.req.json<{ threadId?: string; message: string; tools?: ToolDef[]; systemPrompt?: string }>();
+  const body = await c.req.json<{ threadId?: string; message: string; disabledTools?: string[]; systemPrompt?: string }>();
   const threadId = body.threadId ?? `thread_${Date.now()}`;
-  const tools = [...getAgentTools(), ...(body.tools ?? [])];
+  const allTools = getAgentTools();
+  const disabledSet = new Set(body.disabledTools ?? []);
+  const tools = allTools.filter(t => !disabledSet.has(t.name));
   const sp = body.systemPrompt ?? getDefaultSystemPrompt();
   const t = getThread(threadId);
   const msgId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -200,11 +222,12 @@ chatRouter.post("/", async (c) => {
         }
       }
     } catch (err: any) {
-      await stream.writeSSE({ data: JSON.stringify({ __error__: true, message: err.message }) });
+      console.error(`[chat] stream error thread=${threadId}:`, err?.message ?? err);
+      await stream.writeSSE({ data: JSON.stringify({ __error__: true, message: sanitizeError(err) }) });
     } finally {
       t.running = false;
       t.abort = null;
-      try { db.update(threadsTable).set({ updatedAt: new Date().toISOString() }).where(eq(threadsTable.id, threadId)).run(); } catch {}
+      try { db.update(threadsTable).set({ updatedAt: new Date().toISOString() }).where(eq(threadsTable.id, threadId)).run(); } catch (dbErr: any) { console.error(`[chat] DB update failed thread=${threadId}:`, dbErr?.message ?? dbErr); }
     }
   });
 });
@@ -224,8 +247,10 @@ chatRouter.post("/abort", async (c) => {
 // ── POST /api/chat/resume ──
 
 chatRouter.post("/resume", async (c) => {
-  const body = await c.req.json<{ threadId: string; approved: boolean; feedback?: string; tools?: ToolDef[]; systemPrompt?: string }>();
-  const tools = [...getAgentTools(), ...(body.tools ?? [])];
+  const body = await c.req.json<{ threadId: string; approved: boolean; feedback?: string; disabledTools?: string[]; systemPrompt?: string }>();
+  const allTools2 = getAgentTools();
+  const disabledSet2 = new Set(body.disabledTools ?? []);
+  const tools = allTools2.filter(t => !disabledSet2.has(t.name));
   const sp = body.systemPrompt ?? getDefaultSystemPrompt();
   const agent = getAgent(tools, sp);
   const t = getThread(body.threadId);
@@ -313,11 +338,12 @@ chatRouter.post("/resume", async (c) => {
         }
       }
     } catch (err: any) {
-      await stream.writeSSE({ data: JSON.stringify({ __error__: true, message: err.message }) });
+      console.error(`[chat] resume error thread=${body.threadId}:`, err?.message ?? err);
+      await stream.writeSSE({ data: JSON.stringify({ __error__: true, message: sanitizeError(err) }) });
     } finally {
       t.running = false;
       t.abort = null;
-      try { getDB().update(threadsTable).set({ updatedAt: new Date().toISOString() }).where(eq(threadsTable.id, body.threadId)).run(); } catch {}
+      try { getDB().update(threadsTable).set({ updatedAt: new Date().toISOString() }).where(eq(threadsTable.id, body.threadId)).run(); } catch (dbErr: any) { console.error(`[chat] DB update failed thread=${body.threadId}:`, dbErr?.message ?? dbErr); }
     }
   });
 });

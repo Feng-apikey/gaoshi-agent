@@ -11,14 +11,26 @@ export interface SkillMeta {
 const SKILLS_DIR = path.join(process.cwd(), "skills");
 
 let _index: SkillMeta[] | null = null;
+let _overrideDir: string | null = null;
+
+function getSkillsDir(): string {
+  return _overrideDir ?? SKILLS_DIR;
+}
+
+/** Override skills directory for testing. Pass null to reset. */
+export function setSkillsDirForTest(dir: string | null): void {
+  _overrideDir = dir;
+  _index = null;
+}
 
 // ── Index ──
 
 export function buildSkillIndex(): SkillMeta[] {
   if (_index) return _index;
 
+  const dir = getSkillsDir();
   const results: SkillMeta[] = [];
-  if (!fs.existsSync(SKILLS_DIR)) return results;
+  if (!fs.existsSync(dir)) return results;
 
   function walk(dir: string, base = "") {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -34,12 +46,12 @@ export function buildSkillIndex(): SkillMeta[] {
     }
   }
 
-  walk(SKILLS_DIR);
+  walk(dir);
   _index = results;
   return results;
 }
 
-function extractFrontmatter(raw: string, key: string): string | null {
+export function extractFrontmatter(raw: string, key: string): string | null {
   const m = raw.match(new RegExp(`^${key}:\\s*(.+)$`, "m"));
   return m ? m[1].trim() : null;
 }
@@ -51,7 +63,7 @@ export function loadSkill(nameOrPath: string): string | null {
   const meta = index.find(s => s.name === nameOrPath || s.path === nameOrPath);
   if (!meta) return null;
 
-  const fullPath = path.join(SKILLS_DIR, meta.path);
+  const fullPath = path.join(getSkillsDir(), meta.path);
   try {
     return fs.readFileSync(fullPath, "utf-8");
   } catch {
