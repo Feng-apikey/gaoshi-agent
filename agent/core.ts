@@ -1,4 +1,4 @@
-﻿﻿﻿import { StateGraph, Annotation, Command } from "@langchain/langgraph";
+﻿import { StateGraph, Annotation, Command } from "@langchain/langgraph";
 import type { LanguageModel } from "ai";
 import { generateText, tool, jsonSchema } from "ai";
 import type { ToolDef } from "./tools/types.ts";
@@ -48,7 +48,7 @@ const AgentState = Annotation.Root({
     },
     default: () => [],
   }),
-  threadId: Annotation<string>({ default: () => "" }),
+  threadId: Annotation<string>({ reducer: (_, b) => b, default: () => "" }),
   tokenCount: Annotation<number>({
     reducer: (a, b) => a + b,
     default: () => 0,
@@ -57,7 +57,7 @@ const AgentState = Annotation.Root({
     reducer: (_, b) => b,
     default: () => false,
   }),
-  done: Annotation<boolean>({ default: () => false }),
+  done: Annotation<boolean>({ reducer: (_, b) => b, default: () => false }),
   toolStep: Annotation<number>({
     reducer: (a, b) => a + b,
     default: () => 0,
@@ -419,7 +419,7 @@ export function buildAgent(config: AgentConfig) {
   const checkpointer = getCheckpointer();
   const interruptBefore = config.interruptOn === "tools" ? ["tools"] : undefined;
 
-  return graph.compile({ checkpointer, interruptBefore });
+  return graph.compile({ checkpointer, interruptBefore: interruptBefore as any });
 }
 
 // ── Token stats ──

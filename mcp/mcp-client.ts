@@ -121,7 +121,7 @@ export class MCPClientManager {
         });
       }
 
-      this.servers.set(serverId, { client, transport, process: proc, tools, config: cfg });
+      this.servers.set(serverId, { client, transport, process: proc, tools: tools.map((t: any) => ({ name: t.name, description: t.description ?? "", inputSchema: t.inputSchema })), config: cfg });
     };
 
     const promise = doConnect().finally(() => this.connecting.delete(serverId));
@@ -139,9 +139,9 @@ export class MCPClientManager {
       if (!s) throw new Error(`MCP server not connected: ${serverId}`);
     }
     const result = await s.client.callTool({ name: toolName, arguments: args }, undefined, timeoutMs ? { timeout: timeoutMs } : undefined);
-    if (result.isError) { const text = result.content?.map((c: any) => c.text ?? "").join("\n") ?? "未知错误"; throw new Error(text); }
+    if (result.isError) { const text = (result.content as any[])?.map((c: any) => c.text ?? "").join("\n") ?? "未知错误"; throw new Error(text); }
     if (result.structuredContent) return result.structuredContent;
-    const text = result.content?.filter((c: any) => c.type === "text").map((c: any) => c.text).join("\n") ?? "";
+    const text = (result.content as any[])?.filter((c: any) => c.type === "text").map((c: any) => c.text).join("\n") ?? "";
     try { return JSON.parse(text); } catch { return { text, raw: text }; }
   }
 

@@ -54,7 +54,7 @@ export async function renderCard(html: string, width = 800, height = 600) {
   const browser = await getBrowser();
   const page = await browser.newPage({ viewport: { width, height } });
   try {
-    await page.route("**/*", (route) => {
+    await page.route("**/*", (route: any) => {
       const type = route.request().resourceType();
       if (type === "font" || type === "image" || type === "media") {
         return route.abort();

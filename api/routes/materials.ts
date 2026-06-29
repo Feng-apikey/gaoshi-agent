@@ -4,6 +4,8 @@ import { materials, drafts } from "../../storage/schema.ts";
 import { eq } from "drizzle-orm";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { createHash, randomBytes } from "node:crypto";
+import { extToCategory, extToMime, MEDIA_DIRS } from "../../storage/media-types.ts";
 
 export function transformMaterial(row: any) {
   return {
@@ -16,16 +18,12 @@ export const materialsRouter = new Hono();
 
 const DATA_DIR = path.resolve(path.join(process.cwd(), "data"));
 
-const extToCategory: Record<string, string> = {
-  ".png": "image", ".jpg": "image", ".jpeg": "image", ".gif": "image", ".webp": "image", ".svg": "image",
-  ".mp4": "video", ".mov": "video", ".avi": "video", ".mkv": "video",
-  ".mp3": "audio", ".wav": "audio", ".opus": "audio", ".ogg": "audio", ".m4a": "audio", ".aac": "audio",
-  ".webm": "voice",
-  ".pdf": "document", ".docx": "document", ".doc": "document", ".txt": "document", ".md": "document", ".html": "document",
-};
-
 // Merge filesystem files into DB — returns all materials
-let _syncCache: { time: number; data: any[] } | null = null;
+let _syncCache: { time: number; data: any[]; mtimeCache: Map<string, number> } | null = null;
+
+// Skip hashing files larger than this to avoid loading 100MB+ into memory.
+// Files above this size fall back to path-only matching (still work, just no rename detection).
+const MAX_HASH_SIZE = 50 * 1024 * 1024; // 50MB
 
 function syncAndList() {
   if (_syncCache && Date.now() - _syncCache.time < 5 * 60 * 1000) {
@@ -40,9 +38,22 @@ function syncAndList() {
     existingPaths.add((row.path as string).replace(/\\/g, "/"));
   }
 
+  // Build hash index for "old friend, new path" detection (rename/move)
+  const existingHashes = new Map<string, any>();
+  for (const row of existing.values()) {
+    if (row.contentHash) existingHashes.set(row.contentHash as string, row);
+  }
+
+  // mtime cache from previous sync — skip hashing files whose mtime is unchanged
+  const prevMtime = _syncCache?.mtimeCache;
+  const mtimeCache = new Map<string, number>();
+  // When we skip a hash because of mtime cache, we still need the hash for index lookups,
+  // so we also carry forward the last-known hash for unchanged files.
+  const prevHashByPath = (_syncCache as any)?.hashByPath as Map<string, string> | undefined;
+  const hashByPath = new Map<string, string>();
+
   // Scan data/ for files not yet in DB
-  const mediaDirs = ["images", "videos", "audio", "voices", "documents", "docs", "templates"];
-  for (const dir of mediaDirs) {
+  for (const dir of MEDIA_DIRS) {
     const dirPath = path.join(DATA_DIR, dir);
     if (!fs.existsSync(dirPath)) continue;
     for (const entry of fs.readdirSync(dirPath)) {
@@ -50,31 +61,62 @@ function syncAndList() {
       if (!fs.statSync(full).isFile()) continue;
       const normalizedPath = full.replace(/\\/g, "/");
       if (existingPaths.has(normalizedPath)) continue;
-      const id = path.relative(DATA_DIR, full).replace(/\\/g, "/");
 
       const ext = path.extname(entry).toLowerCase();
-      const category = extToCategory[ext] ?? "document";
+      const category = extToCategory(ext) ?? "document";
       const stat = fs.statSync(full);
-      const mimeMap: Record<string, string> = {
-        ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp",
-        ".mp4": "video/mp4", ".mp3": "audio/mpeg", ".wav": "audio/wav",
-        ".pdf": "application/pdf", ".md": "text/markdown", ".txt": "text/plain",
-      };
+      mtimeCache.set(normalizedPath, stat.mtimeMs);
 
+      // Hash this file (skip if mtime unchanged AND we have a prior hash for it)
+      let hash = "";
+      if (stat.size <= MAX_HASH_SIZE) {
+        if (prevMtime?.get(normalizedPath) === stat.mtimeMs && prevHashByPath?.get(normalizedPath)) {
+          hash = prevHashByPath.get(normalizedPath)!;
+        } else {
+          try {
+            hash = createHash("sha256").update(fs.readFileSync(full)).digest("hex");
+          } catch {}
+        }
+      }
+      if (hash) hashByPath.set(normalizedPath, hash);
+
+      // Old friend, new path: hash matches an existing row → just update path
+      if (hash && existingHashes.has(hash)) {
+        const oldRow = existingHashes.get(hash)!;
+        if ((oldRow.path as string).replace(/\\/g, "/") !== normalizedPath) {
+          db.update(materials)
+            .set({ path: full, name: entry })
+            .where(eq(materials.id, oldRow.id))
+            .run();
+          console.log(`[materials] hash-matched rename: ${oldRow.id} ${oldRow.path} -> ${full}`);
+          // Refresh in-memory state so orphan cleanup doesn't kill it
+          existing.set(oldRow.id, { ...oldRow, path: full, name: entry });
+          existingPaths.add(normalizedPath);
+          existingPaths.delete((oldRow.path as string).replace(/\\/g, "/"));
+        }
+        continue;
+      }
+
+      // Brand new file: assign a stable hex id (NOT derived from filename, so rename doesn't change id)
+      const id = randomBytes(8).toString("hex");
       try {
         db.insert(materials).values({
           id,
           name: entry,
           path: full,
           category,
-          mimeType: mimeMap[ext] ?? "",
+          mimeType: extToMime(ext),
           size: stat.size,
           tags: "[]",
           description: "",
           generatedBy: "",
           useCount: 0,
+          contentHash: hash,
           createdAt: stat.birthtime.toISOString(),
         }).run();
+        existing.set(id, { id, path: full, contentHash: hash, name: entry });
+        existingPaths.add(normalizedPath);
+        if (hash) existingHashes.set(hash, { id, path: full, contentHash: hash });
         console.log("[materials] synced:", id);
       } catch (err: any) {
         if (!err.message?.includes("UNIQUE constraint")) {
@@ -95,7 +137,9 @@ function syncAndList() {
   }
 
   const data = db.select().from(materials).all();
-  _syncCache = { time: Date.now(), data };
+  _syncCache = { time: Date.now(), data, mtimeCache };
+  // Stash hashByPath on the cache (sneaky, but avoids widening the type for one internal use)
+  (_syncCache as any).hashByPath = hashByPath;
   return data;
 }
 
@@ -216,8 +260,8 @@ materialsRouter.post("/:id{.+}/analyze", async (c) => {
     const { getModel } = await import("../../agent/providers/router.ts");
     const { generateText } = await import("ai");
 
-    let messages: any[];
-    let modelType: string;
+    let messages: any[] = [];  // default for type narrowing; all branches assign
+    let modelType: any;        // narrowed at line 364 via getModel, kept as any to avoid union narrowing issues
 
     if (row.category === "image") {
       // Try vision model; fallback to filename-based text analysis
@@ -226,15 +270,11 @@ materialsRouter.post("/:id{.+}/analyze", async (c) => {
         modelType = "vision";
         const buffer = fs.readFileSync(row.path);
         const ext = path.extname(row.path).toLowerCase();
-        const mimeMap: Record<string, string> = {
-          ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-          ".webp": "image/webp", ".gif": "image/gif",
-        };
         messages = [{
           role: "user",
           content: [
             { type: "text", text: IMAGE_ANALYSIS_PROMPT },
-            { type: "image", image: buffer.toString("base64"), mimeType: mimeMap[ext] ?? "image/png" },
+            { type: "image", image: buffer.toString("base64"), mimeType: extToMime(ext) },
           ],
         }];
       } catch {

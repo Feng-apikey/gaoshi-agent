@@ -7,26 +7,14 @@ import { eq } from "drizzle-orm";
 import { imageSize } from "image-size";
 import { getDB } from "../../storage/db.ts";
 import { materials } from "../../storage/schema.ts";
+import { extToCategory, extToMime, CATEGORY_TO_DIR } from "../../storage/media-types.ts";
+
+export { extToCategory } from "../../storage/media-types.ts";
 
 export const uploadRouter = new Hono();
 
 const UPLOAD_DIR = path.join(process.cwd(), "data");
 const MAX_SIZE = 100 * 1024 * 1024; // 100MB
-
-const ALLOWED_TYPES: Record<string, string[]> = {
-  document: [".pdf", ".docx", ".doc", ".txt", ".md", ".html"],
-  image: [".png", ".jpg", ".jpeg", ".gif", ".webp"],
-  audio: [".mp3", ".wav", ".ogg", ".m4a", ".opus", ".aac"],
-  voice: [".webm"],
-  video: [".mp4", ".mov", ".avi", ".mkv"],
-};
-
-export function extToCategory(ext: string): string | null {
-  for (const [cat, exts] of Object.entries(ALLOWED_TYPES)) {
-    if (exts.includes(ext.toLowerCase())) return cat;
-  }
-  return null;
-}
 
 // ── POST /api/upload — upload a file ──
 
@@ -45,8 +33,7 @@ uploadRouter.post("/", async (c) => {
     return c.json({ error: `不支持的文件类型: ${ext}` }, 400);
   }
 
-  const pluralMap: Record<string, string> = { image: "images", video: "videos", audio: "audio", voice: "voices", document: "documents" };
-  const subDir = path.join(UPLOAD_DIR, pluralMap[category] || category + "s");
+  const subDir = path.join(UPLOAD_DIR, CATEGORY_TO_DIR[category] || category + "s");
   fs.mkdirSync(subDir, { recursive: true });
 
   const id = crypto.randomBytes(8).toString("hex");
@@ -55,6 +42,9 @@ uploadRouter.post("/", async (c) => {
 
   const buffer = Buffer.from(await file.arrayBuffer());
   fs.writeFileSync(filePath, buffer);
+
+  // content hash for sync rename/move detection (sha256 of full file)
+  const contentHash = crypto.createHash("sha256").update(buffer).digest("hex");
 
   let imageWidth = 0;
   let imageHeight = 0;
@@ -101,6 +91,7 @@ uploadRouter.post("/", async (c) => {
       description: "",
       generatedBy: "",
       useCount: 0,
+      contentHash,
       createdAt: result.createdAt,
     }).run();
   } catch {
@@ -146,18 +137,7 @@ uploadRouter.get("/:id{.*}", (c) => {
   }
 
   const ext = path.extname(filePath).toLowerCase();
-  const mimeMap: Record<string, string> = {
-    ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-    ".gif": "image/gif", ".webp": "image/webp",
-    ".mp4": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime",
-    ".mp3": "audio/mpeg", ".wav": "audio/wav", ".ogg": "audio/ogg",
-    ".pdf": "application/pdf",
-    ".md": "text/plain; charset=utf-8", ".txt": "text/plain; charset=utf-8",
-    ".html": "text/html; charset=utf-8",
-    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    ".doc": "application/msword",
-  };
-  const mime = mimeMap[ext] ?? "application/octet-stream";
+  const mime = extToMime(ext);
 
   // Force inline for text and PDF; HTML/SVG always attachment (prevents same-origin XSS)
   const inlineTypes = new Set(["text/plain", "application/pdf"]);

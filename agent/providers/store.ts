@@ -58,8 +58,12 @@ export async function refreshRouting(): Promise<RoutingEntry[]> {
   try {
     const db = await getDB();
     const { modelRouting: mr } = await getTables();
-    _routingCache = db.select().from(mr).all();
-    return _routingCache;
+    // drizzle's inferred row type uses string for capability and string|null for nullable cols;
+    // RoutingEntry narrows capability to the Capability union and expects non-null strings.
+    // Cast at the boundary; runtime values are already correct.
+    const rows = db.select().from(mr).all() as unknown as RoutingEntry[];
+    _routingCache = rows;
+    return rows;
   } catch {
     _routingCache = [];
     return [];

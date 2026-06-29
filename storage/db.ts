@@ -95,6 +95,7 @@ function initTables(sqlite: Database.Database) {
   addColumnIfNotExists(sqlite, "materials", "height", "INTEGER DEFAULT 0");
   addColumnIfNotExists(sqlite, "materials", "generated_by", "TEXT DEFAULT ''");
   addColumnIfNotExists(sqlite, "materials", "use_count", "INTEGER DEFAULT 0");
+  addColumnIfNotExists(sqlite, "materials", "content_hash", "TEXT DEFAULT ''");
   addColumnIfNotExists(sqlite, "threads", "title", "TEXT NOT NULL DEFAULT '新对话'");
   addColumnIfNotExists(sqlite, "model_routing", "base_url", "TEXT DEFAULT ''");
   addColumnIfNotExists(sqlite, "model_routing", "api_key", "TEXT DEFAULT ''");

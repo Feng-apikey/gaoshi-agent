@@ -41,7 +41,7 @@ export function createFileTools(): ToolDef[] {
         const p = safePath(args.path);
         if (!fs.existsSync(p)) return { error: "文件不存在" };
         const content = fs.readFileSync(p, args.encoding ?? "utf-8");
-        return { content: (content as string).slice(0, 50000), path: args.path };
+        return { content: (content as unknown as string).slice(0, 50000), path: args.path };
       },
     },
     {

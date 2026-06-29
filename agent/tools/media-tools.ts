@@ -7,7 +7,10 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { spawn } from "node:child_process";
 import * as os from "node:os";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash, randomBytes } from "node:crypto";
+import { extToMime } from "../../storage/media-types.ts";
+import { getDB } from "../../storage/db.ts";
+import { materials } from "../../storage/schema.ts";
 
 // ── MiniMax native API client ──
 
@@ -82,8 +85,7 @@ export function createMediaTools(): ToolDef[] {
         if (!fs.existsSync(args.path)) return { error: "文件不存在" };
         const buffer = fs.readFileSync(args.path);
         const ext = path.extname(args.path).toLowerCase();
-        const mimeMap: Record<string, string> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp" };
-        const mime = mimeMap[ext] ?? "image/png";
+        const mime = extToMime(ext);
 
         try {
           const model = getModel("vision");
@@ -125,9 +127,8 @@ export function createMediaTools(): ToolDef[] {
         if (!fs.existsSync(args.path)) return { error: "文件不存在" };
         const buffer = fs.readFileSync(args.path);
         const ext = path.extname(args.path).toLowerCase();
-        const mimeMap: Record<string, string> = { ".mp4": "video/mp4", ".mov": "video/quicktime", ".avi": "video/x-msvideo", ".mkv": "video/x-matroska", ".webm": "video/webm" };
-        const mime = mimeMap[ext];
-        if (!mime) return { error: `不支持的视频格式: ${ext}` };
+        const mime = extToMime(ext);
+        if (!mime.startsWith("video/")) return { error: `不支持的视频格式: ${ext}` };
         const question = args.question ?? "详细分析这段视频的内容、场景、运镜方式和视觉风格。";
 
         // 1. Try video-native model
@@ -212,13 +213,42 @@ export function createMediaTools(): ToolDef[] {
             const imageUrls: string[] = result?.data?.image_urls ?? [];
             if (!imageUrls.length) return { error: "未生成图片" };
 
-            // Download to local temp file
+            // Download → save to data/images/ as a managed material (DB row + content hash)
             const imgResp = await fetch(imageUrls[0]);
             const imgBuf = Buffer.from(await imgResp.arrayBuffer());
-            const outPath = path.join(os.tmpdir(), `gaoshi_img_${Date.now()}.png`);
-            fs.writeFileSync(outPath, imgBuf);
 
-            return { success: true, path: outPath, url: imageUrls[0], prompt: args.prompt };
+            const id = randomBytes(8).toString("hex");
+            const imagesDir = path.join(process.cwd(), "data", "images");
+            fs.mkdirSync(imagesDir, { recursive: true });
+            const filePath = path.join(imagesDir, `${id}.png`);
+            fs.writeFileSync(filePath, imgBuf);
+
+            const contentHash = createHash("sha256").update(imgBuf).digest("hex");
+
+            try {
+              const db = getDB();
+              db.insert(materials).values({
+                id,
+                name: `${id}.png`,
+                path: filePath,
+                category: "image",
+                mimeType: "image/png",
+                size: imgBuf.length,
+                width: 0,
+                height: 0,
+                tags: "[]",
+                description: "",
+                generatedBy: `${route.providerId}/${route.model || "image-01"}`,
+                useCount: 0,
+                contentHash,
+                createdAt: new Date().toISOString(),
+              }).run();
+            } catch (err: any) {
+              // Don't fail the whole tool if DB insert fails — caller still gets the file path
+              return { success: true, id, path: filePath, url: imageUrls[0], prompt: args.prompt, warning: `DB insert failed: ${err.message}` };
+            }
+
+            return { success: true, id, path: filePath, url: imageUrls[0], prompt: args.prompt };
           }
 
           return { status: "not_wired", hint: `生图能力已配置 ${route.model}，但该提供商暂未对接原生 API。` };

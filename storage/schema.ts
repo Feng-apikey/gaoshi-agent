@@ -64,5 +64,6 @@ export const materials = sqliteTable("materials", {
   description: text("description").default(""),
   generatedBy: text("generated_by").default(""), // model name if AI-generated
   useCount: integer("use_count").default(0),     // access count
+  contentHash: text("content_hash").default(""), // sha256 of file content, used by sync to detect rename/move
   createdAt: text("created_at").notNull(),
 });
