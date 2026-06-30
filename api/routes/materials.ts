@@ -4,8 +4,8 @@ import { materials, drafts } from "../../storage/schema.ts";
 import { eq } from "drizzle-orm";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { createHash, randomBytes } from "node:crypto";
-import { extToCategory, extToMime, MEDIA_DIRS } from "../../storage/media-types.ts";
+import { extToMime } from "../../storage/media-types.ts";
+import { syncAndList, invalidateSyncCache, getDataDir } from "../../storage/materials-sync.ts";
 
 export function transformMaterial(row: any) {
   return {
@@ -16,132 +16,7 @@ export function transformMaterial(row: any) {
 
 export const materialsRouter = new Hono();
 
-const DATA_DIR = path.resolve(path.join(process.cwd(), "data"));
-
-// Merge filesystem files into DB — returns all materials
-let _syncCache: { time: number; data: any[]; mtimeCache: Map<string, number> } | null = null;
-
-// Skip hashing files larger than this to avoid loading 100MB+ into memory.
-// Files above this size fall back to path-only matching (still work, just no rename detection).
-const MAX_HASH_SIZE = 50 * 1024 * 1024; // 50MB
-
-function syncAndList() {
-  if (_syncCache && Date.now() - _syncCache.time < 5 * 60 * 1000) {
-    return _syncCache.data;
-  }
-
-  const db = getDB();
-  const existing = new Map<string, any>();
-  const existingPaths = new Set<string>();
-  for (const row of db.select().from(materials).all()) {
-    existing.set(row.id as string, row);
-    existingPaths.add((row.path as string).replace(/\\/g, "/"));
-  }
-
-  // Build hash index for "old friend, new path" detection (rename/move)
-  const existingHashes = new Map<string, any>();
-  for (const row of existing.values()) {
-    if (row.contentHash) existingHashes.set(row.contentHash as string, row);
-  }
-
-  // mtime cache from previous sync — skip hashing files whose mtime is unchanged
-  const prevMtime = _syncCache?.mtimeCache;
-  const mtimeCache = new Map<string, number>();
-  // When we skip a hash because of mtime cache, we still need the hash for index lookups,
-  // so we also carry forward the last-known hash for unchanged files.
-  const prevHashByPath = (_syncCache as any)?.hashByPath as Map<string, string> | undefined;
-  const hashByPath = new Map<string, string>();
-
-  // Scan data/ for files not yet in DB
-  for (const dir of MEDIA_DIRS) {
-    const dirPath = path.join(DATA_DIR, dir);
-    if (!fs.existsSync(dirPath)) continue;
-    for (const entry of fs.readdirSync(dirPath)) {
-      const full = path.join(dirPath, entry);
-      if (!fs.statSync(full).isFile()) continue;
-      const normalizedPath = full.replace(/\\/g, "/");
-      if (existingPaths.has(normalizedPath)) continue;
-
-      const ext = path.extname(entry).toLowerCase();
-      const category = extToCategory(ext) ?? "document";
-      const stat = fs.statSync(full);
-      mtimeCache.set(normalizedPath, stat.mtimeMs);
-
-      // Hash this file (skip if mtime unchanged AND we have a prior hash for it)
-      let hash = "";
-      if (stat.size <= MAX_HASH_SIZE) {
-        if (prevMtime?.get(normalizedPath) === stat.mtimeMs && prevHashByPath?.get(normalizedPath)) {
-          hash = prevHashByPath.get(normalizedPath)!;
-        } else {
-          try {
-            hash = createHash("sha256").update(fs.readFileSync(full)).digest("hex");
-          } catch {}
-        }
-      }
-      if (hash) hashByPath.set(normalizedPath, hash);
-
-      // Old friend, new path: hash matches an existing row → just update path
-      if (hash && existingHashes.has(hash)) {
-        const oldRow = existingHashes.get(hash)!;
-        if ((oldRow.path as string).replace(/\\/g, "/") !== normalizedPath) {
-          db.update(materials)
-            .set({ path: full, name: entry })
-            .where(eq(materials.id, oldRow.id))
-            .run();
-          console.log(`[materials] hash-matched rename: ${oldRow.id} ${oldRow.path} -> ${full}`);
-          // Refresh in-memory state so orphan cleanup doesn't kill it
-          existing.set(oldRow.id, { ...oldRow, path: full, name: entry });
-          existingPaths.add(normalizedPath);
-          existingPaths.delete((oldRow.path as string).replace(/\\/g, "/"));
-        }
-        continue;
-      }
-
-      // Brand new file: assign a stable hex id (NOT derived from filename, so rename doesn't change id)
-      const id = randomBytes(8).toString("hex");
-      try {
-        db.insert(materials).values({
-          id,
-          name: entry,
-          path: full,
-          category,
-          mimeType: extToMime(ext),
-          size: stat.size,
-          tags: "[]",
-          description: "",
-          generatedBy: "",
-          useCount: 0,
-          contentHash: hash,
-          createdAt: stat.birthtime.toISOString(),
-        }).run();
-        existing.set(id, { id, path: full, contentHash: hash, name: entry });
-        existingPaths.add(normalizedPath);
-        if (hash) existingHashes.set(hash, { id, path: full, contentHash: hash });
-        console.log("[materials] synced:", id);
-      } catch (err: any) {
-        if (!err.message?.includes("UNIQUE constraint")) {
-          console.error("[materials] sync failed:", id, err.message);
-        }
-      }
-    }
-  }
-
-  // Clean up orphaned DB records where file no longer exists on disk
-  for (const [id, row] of existing) {
-    if (!fs.existsSync((row as any).path)) {
-      try {
-        db.delete(materials).where(eq(materials.id, id)).run();
-        console.log("[materials] cleaned orphan:", id);
-      } catch {}
-    }
-  }
-
-  const data = db.select().from(materials).all();
-  _syncCache = { time: Date.now(), data, mtimeCache };
-  // Stash hashByPath on the cache (sneaky, but avoids widening the type for one internal use)
-  (_syncCache as any).hashByPath = hashByPath;
-  return data;
-}
+const DATA_DIR = getDataDir();
 
 // GET /api/materials — list all
 materialsRouter.get("/", (c) => {
@@ -156,24 +31,31 @@ materialsRouter.get("/:id{.+}", (c) => {
   return c.json(transformMaterial(row));
 });
 
-// PATCH /api/materials/:id — rename or update tags
+// PATCH /api/materials/:id — update name (UI label) or tags
+// SSOT: id is the unique truth; path is derived from id; name is independent
+//       UI-facing field. PATCH here MUST NOT touch disk — no fs.renameSync,
+//       no path mutation. Disk file basename is permanently <id><ext>.
 materialsRouter.patch("/:id{.+}", async (c) => {
-  _syncCache = null;
+  invalidateSyncCache();
   const db = getDB();
   const id = c.req.param("id");
   const row = db.select().from(materials).where(eq(materials.id, id)).get();
   if (!row) return c.json({ error: "not found" }, 404);
 
-  const body = await c.req.json<{ name?: string; tags?: string[] }>();
+  const body = await c.req.json<{ name?: string; tags?: string[]; path?: string }>();
+
+  // Reject any attempt to override disk path — disk filename is locked to <id><ext>.
+  if (body.path !== undefined) {
+    return c.json({ error: "path 是只读字段，由 id 派生。改素材名请传 name 字段。" }, 400);
+  }
+
   const updates: Record<string, any> = {};
 
   if (body.name !== undefined) {
-    const ext = path.extname(row.path);
-    const dir = path.dirname(row.path);
-    const safeName = path.basename(body.name);
-    const newName = safeName.includes(".") ? safeName : safeName + ext;
-    updates.path = path.join(dir, newName);
-    updates.name = newName;
+    // Sanitize: strip path separators / null bytes; cap length.
+    const safeName = path.basename(String(body.name)).slice(0, 200).replace(/\0/g, "");
+    if (!safeName) return c.json({ error: "name 不能为空" }, 400);
+    updates.name = safeName;
   }
   if (body.tags !== undefined) {
     updates.tags = JSON.stringify(body.tags);
@@ -181,17 +63,7 @@ materialsRouter.patch("/:id{.+}", async (c) => {
 
   if (Object.keys(updates).length === 0) return c.json(transformMaterial(row));
 
-  const oldPath = row.path;
   db.update(materials).set(updates).where(eq(materials.id, id)).run();
-
-  if (updates.path && updates.path !== oldPath) {
-    try {
-      fs.renameSync(oldPath, updates.path as string);
-    } catch {
-      db.update(materials).set({ path: oldPath, name: row.name }).where(eq(materials.id, id)).run();
-      return c.json({ error: "file rename failed" }, 500);
-    }
-  }
 
   const updated = db.select().from(materials).where(eq(materials.id, id)).get();
   return c.json(transformMaterial(updated));
@@ -199,7 +71,7 @@ materialsRouter.patch("/:id{.+}", async (c) => {
 
 // DELETE /api/materials/:id
 materialsRouter.delete("/:id{.+}", (c) => {
-  _syncCache = null;
+  invalidateSyncCache();
   const db = getDB();
   const id = c.req.param("id");
   const row = db.select().from(materials).where(eq(materials.id, id)).get();
@@ -246,7 +118,7 @@ tags：3-8 个中文标签，每个不超过 6 个汉字，覆盖文档主题、
 // ── POST /api/materials/:id/analyze ──
 
 materialsRouter.post("/:id{.+}/analyze", async (c) => {
-  _syncCache = null;
+  invalidateSyncCache();
   const db = getDB();
   const id = c.req.param("id");
   const row = db.select().from(materials).where(eq(materials.id, id)).get();

@@ -7,6 +7,28 @@ import { eq } from "drizzle-orm";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 
+// 素材库目录 — 在这些目录内的文件不允许用 file_move/file_rename,
+// 必须用 material_update 工具改 name 字段, 否则破坏 SSOT (id 是唯一真值).
+const MATERIAL_DIRS = new Set([
+  "images", "videos", "audios", "voices", "documents", "docs", "templates",
+]);
+
+function getImmediateDirName(absPath: string): string {
+  // 取路径里 DATA_DIR 之后的第一段目录名; 如果就是 DATA_DIR 根下文件返 ""
+  const rel = path.relative(DATA_DIR, absPath);
+  if (!rel || rel.startsWith("..")) return "";
+  const seg = rel.split(path.sep);
+  return seg.length > 1 ? seg[0] : "";
+}
+
+function assertNotInMaterialDir(absPath: string): { ok: boolean; dir?: string } {
+  const dir = getImmediateDirName(absPath);
+  if (dir && MATERIAL_DIRS.has(dir)) {
+    return { ok: false, dir };
+  }
+  return { ok: true };
+}
+
 export function safePath(subpath: string, baseDir?: string): string {
   const DATA_DIR = baseDir ?? path.join(process.cwd(), "data");
   const resolved = path.resolve(DATA_DIR);
@@ -77,6 +99,21 @@ export function createFileTools(): ToolDef[] {
         const src = safePath(args.from);
         const dst = safePath(args.to);
         if (!fs.existsSync(src)) return { error: "源文件不存在" };
+
+        // SSOT 守卫: 素材库目录内的文件不允许 file_move, 改素材名请用 material_update
+        const srcGuard = assertNotInMaterialDir(src);
+        if (!srcGuard.ok) {
+          return {
+            error: `素材库目录(${srcGuard.dir}/)的文件不允许用 file_move, 改素材名请用 material_update 工具(name 字段)`,
+          };
+        }
+        const dstGuard = assertNotInMaterialDir(dst);
+        if (!dstGuard.ok) {
+          return {
+            error: `不能把文件 move 进素材库目录(${dstGuard.dir}/), 素材入库请用 material_save / POST /api/upload`,
+          };
+        }
+
         fs.mkdirSync(path.dirname(dst), { recursive: true });
         fs.renameSync(src, dst);
         return { moved: true, from: args.from, to: args.to };

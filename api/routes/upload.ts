@@ -58,7 +58,9 @@ uploadRouter.post("/", async (c) => {
 
   const result: any = {
     id,
-    name: file.name,
+    // SSOT: name 默认 = `<id><ext>`, 跟磁盘 basename 一致.
+    // 原文件名存到 description(可检索), 用户后续改素材名走 PATCH name.
+    name: storedName,
     path: filePath,
     category,
     mimeType: file.type,
@@ -80,7 +82,7 @@ uploadRouter.post("/", async (c) => {
     const db = getDB();
     db.insert(materials).values({
       id,
-      name: file.name,
+      name: storedName,
       path: filePath,
       category,
       mimeType: file.type || "",
@@ -88,7 +90,8 @@ uploadRouter.post("/", async (c) => {
       width: imageWidth,
       height: imageHeight,
       tags: "[]",
-      description: "",
+      // 原始上传文件名存到 description, 便于"按文件名搜"
+      description: file.name ?? "",
       generatedBy: "",
       useCount: 0,
       contentHash,

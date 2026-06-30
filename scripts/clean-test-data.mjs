@@ -30,6 +30,7 @@ if (!noBackup) {
     "data/images/gaoshi_img_1781007098832.png",
     "data/images/xhs-test.png",
     "data/videos/test-video.mp4",
+    "data/videos/test_video.mp4",   // 下划线版 (残留清理后已删, 但保持 dirty list 完整)
   ];
   fs.mkdirSync(path.join(BACKUP_DIR, "dirty-files", "images"), { recursive: true });
   fs.mkdirSync(path.join(BACKUP_DIR, "dirty-files", "videos"), { recursive: true });
@@ -80,6 +81,7 @@ const dirtyFiles = [
   "data/images/gaoshi_img_1781007098832.png",
   "data/images/xhs-test.png",
   "data/videos/test-video.mp4",
+  "data/videos/test_video.mp4",
 ];
 for (const rel of dirtyFiles) {
   const p = path.join(ROOT, rel);
