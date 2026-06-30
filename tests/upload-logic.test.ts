@@ -1,11 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { extToCategory } from "../api/routes/upload.ts";
+import { extToCategory, CATEGORY_TO_DIR } from "../storage/media-types.ts";
 
 const MAX_SIZE = 100 * 1024 * 1024; // 100MB
 
-const pluralMap: Record<string, string> = {
-  image: "images", video: "videos", audio: "audio", voice: "voices", document: "documents",
-};
+const pluralMap: Record<string, string> = CATEGORY_TO_DIR;
 
 // ═══════════════════════════════════════════
 // extToCategory

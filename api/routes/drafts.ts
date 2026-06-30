@@ -55,7 +55,7 @@ draftsRouter.post("/", async (c) => {
   const cover = body.cover ?? "";
   const header = contentType === "article" ? (body.header ?? "") : "";
 
-  const errors = validateDraft(platform, contentType, content, body.title, body.tags, body.abstract);
+  const errors = validateDraft(platform, contentType, content, body.title, body.tags, body.abstract, images);
   if (errors.length > 0) {
     return c.json({ error: "validation failed", errors }, 422);
   }
@@ -123,7 +123,12 @@ draftsRouter.patch("/:id", async (c) => {
     const draftTitle = body.title ?? (row as any).title ?? "";
     const draftTags = Array.isArray(body.tags) ? body.tags : parseJSON((row as any).tags ?? "[]");
     const draftAbstract = body.abstract ?? (row as any).abstract ?? "";
-    const errors = validateDraft(draftPlatform, draftType, draftContent, draftTitle, draftTags, draftAbstract);
+    // Effective images array — mirrors the filtering at line 107 so the
+    // validator sees the same value that will be persisted.
+    const draftImages: string[] = body.images !== undefined
+      ? (effectiveType === "image_text" ? body.images : [])
+      : (effectiveType === "image_text" ? parseJSON((row as any).images ?? "[]") : []);
+    const errors = validateDraft(draftPlatform, draftType, draftContent, draftTitle, draftTags, draftAbstract, draftImages);
     if (errors.length > 0) {
       return c.json({ error: "validation failed", errors }, 422);
     }

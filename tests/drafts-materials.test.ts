@@ -249,14 +249,16 @@ describe("draft validation", () => {
     expect(errors.some(e => e.message.includes("图片超过限制"))).toBe(true);
   });
 
-  it("skips validation for unknown platform", () => {
+  it("returns _root error for unknown platform", () => {
     const errors = validateDraft("未知平台", "article", "x".repeat(100000));
-    expect(errors).toHaveLength(0);
+    expect(errors).toHaveLength(1);
+    expect(errors[0].field).toBe("_root");
   });
 
-  it("skips validation for unknown content type", () => {
+  it("returns _root error for unknown content type", () => {
     const errors = validateDraft("小红书", "unknown_type", "x".repeat(100000));
-    expect(errors).toHaveLength(0);
+    expect(errors).toHaveLength(1);
+    expect(errors[0].field).toBe("_root");
   });
 
   it("B站 article allows 50000 chars", () => {

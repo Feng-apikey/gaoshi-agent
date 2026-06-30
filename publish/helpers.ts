@@ -1,15 +1,11 @@
 import type { Page, Locator } from "playwright";
 import { sleep, humanClick, withIdleMouseMove, waitForUploadComplete } from "./humanize.ts";
 import { existsSync } from "node:fs";
-import { exec, execSync } from "node:child_process";
+import { exec } from "node:child_process";
 import * as path from "node:path";
 import { getDB } from "../storage/db.ts";
 import { materials } from "../storage/schema.ts";
 import { eq } from "drizzle-orm";
-
-// PowerShell helper: real Alt+Tab keystroke (bypasses Windows foreground lock)
-// Used to switch focus to Edge before CDP click triggers native file dialog.
-const psAlttabPath = path.resolve(process.cwd(), "scripts", "_alttab-helper.ps1");
 
 // Module-level path cache populated by validateMaterials (in index.ts),
 // consumed here to avoid hitting the DB on every upload call.
@@ -102,10 +98,10 @@ export function buildUploadCmd(
   // inside the single quotes).
   const winApiType = opts.skipTitleCheck
     ? ""
-    : `Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; using System.Text; public class WinApi { [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow(); [DllImport("user32.dll", CharSet=CharSet.Auto)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount); [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd); }'; `;
+    : `Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; using System.Text; public class WinApi { [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow(); [DllImport("user32.dll", CharSet=CharSet.Auto)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount); [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd); [DllImport("user32.dll", CharSet=CharSet.Auto)] public static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount); }'; `;
   const titleGuard = opts.skipTitleCheck
     ? ""
-    : `$hwnd = [WinApi]::GetForegroundWindow(); $title = New-Object System.Text.StringBuilder 256; [WinApi]::GetWindowText($hwnd, $title, 256) | Out-Null; $titleStr = $title.ToString(); $isFileDialog = $titleStr -match '(打开|Open|选择|上传|Choose|Browse|File)'; if (-not $isFileDialog) { Write-Output "GAOSHI_ABORT title='$titleStr'"; if ([string]::IsNullOrEmpty($prev)) { [System.Windows.Clipboard]::Clear() } else { [System.Windows.Clipboard]::SetText($prev) }; return }; [WinApi]::SetForegroundWindow($hwnd) | Out-Null; `;
+    : `$hwnd = [WinApi]::GetForegroundWindow(); $title = New-Object System.Text.StringBuilder 256; [WinApi]::GetWindowText($hwnd, $title, 256) | Out-Null; $cls = New-Object System.Text.StringBuilder 256; [WinApi]::GetClassName($hwnd, $cls, 256) | Out-Null; $titleStr = $title.ToString(); $clsStr = $cls.ToString(); $isFileDialog = $titleStr -match '(打开|Open|选择|上传|Choose|Browse|File)'; if (-not $isFileDialog) { Write-Output "GAOSHI_ABORT hwnd=$([int64]$hwnd) title='$titleStr' class='$clsStr' wait=${opts.dialogWait}ms"; if ([string]::IsNullOrEmpty($prev)) { [System.Windows.Clipboard]::Clear() } else { [System.Windows.Clipboard]::SetText($prev) }; return }; [WinApi]::SetForegroundWindow($hwnd) | Out-Null; `;
   return (
     `Add-Type -AssemblyName System.Windows.Forms; ` +
     `Add-Type -AssemblyName PresentationCore; ` +
@@ -226,7 +222,6 @@ export async function injectFileViaOSDialog(
   // **串行约束**: Edge 必须在 click 之前到前台,否则 CDP click 不是 user gesture,
   // Windows 不让 native file dialog 弹起。
   await page.bringToFront();  // CDP request (可能被忽略)
-  execSync("powershell -NoProfile -ExecutionPolicy Bypass -File " + psAlttabPath, { windowsHide: true, timeout: 5000 });
   await sleep(800 + Math.floor(Math.random() * 400));  // 等焦点稳定
 
   // 等 OS dialog 物化（PowerShell 冷启动 + Windows 文件对话框初始化）
@@ -244,9 +239,10 @@ export async function injectFileViaOSDialog(
   const fullCmd = encodedPowerShellCmd(psCmd);
   await new Promise<void>((resolve, reject) => {
     exec(fullCmd, { windowsHide: true, timeout: 15000 },
-      (err, stdout) => {
+      (err, stdout, stderr) => {
         if (typeof stdout === "string" && stdout.includes("GAOSHI_ABORT")) {
-          return reject(new Error(`文件对话框未打开,前台窗口: ${stdout.trim()}`));
+          const stderrTail = stderr ? ` | stderr: ${stderr.trim().slice(0, 500)}` : "";
+          return reject(new Error(`文件对话框未打开 (GAOSHI_ABORT 焦点守护中止): ${stdout.trim()}${stderrTail}`));
         }
         err ? reject(err) : resolve();
       }

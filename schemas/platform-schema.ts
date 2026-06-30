@@ -37,13 +37,31 @@ export const PLATFORM_SCHEMA: Record<string, Record<string, TypeDef>> = {
   },
   "B站": {
     dynamic: { title: 20, body: 1000, maxImages: 18 },
-    video:   { title: 80, body: 2000, aspectRatio: "16:9", cover: true },
+    video:   { title: 80, body: 2000, maxTags: 10, aspectRatio: "16:9", cover: true },
     article: { title: 30, body: 100000 },
   },
 }
 
 export function getLimits(platform: string, type: string): TypeDef | null {
   return PLATFORM_SCHEMA[platform]?.[type] ?? null
+}
+
+/** Platforms × content types that store tags as inline `#hashtag` lines in the
+ *  content body (rather than in the dedicated `tags` field).
+ *
+ *  Used by:
+ *  - `tools/gaoshi-mcp/server.ts:appendHashtagsToContent` — append `#tags` to body
+ *  - `publish/index.ts:validateTags` — require `#tag` to be present in body
+ *
+ *  Single source of truth so that the append side and the validate side can
+ *  never drift apart. */
+export const INLINE_HASHTAG_RULES: Record<string, string[]> = {
+  "抖音":   ["image_text", "video"],
+  "小红书": ["image_text", "video"],
+};
+
+export function usesInlineHashtags(platform: string, contentType: string): boolean {
+  return INLINE_HASHTAG_RULES[platform]?.includes(contentType) ?? false;
 }
 
 export function toLimitsJSON(): Record<string, Record<string, Record<string, number | string | undefined>>> {

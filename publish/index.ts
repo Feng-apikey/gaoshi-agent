@@ -9,6 +9,7 @@ import { eq } from "drizzle-orm";
 import { existsSync } from "node:fs";
 import { releasePage } from "./browser-manager.ts";
 import { cacheMaterialPath, clearPathCache } from "./helpers.ts";
+import { getLimits, usesInlineHashtags } from "../schemas/platform-schema.ts";
 
 type PublishFn = (draft: DraftData) => Promise<{ success: boolean; message: string }>;
 
@@ -39,25 +40,29 @@ function validateMaterials(draft: DraftData): string | null {
   return null;
 }
 
+function ctLabel(ct: string): string {
+  return ct === "image_text" ? "图文" : ct === "video" ? "视频" : ct === "article" ? "长文" : ct === "dynamic" ? "动态" : ct;
+}
+
 function validateTags(platform: string, ct: string, content: string, tags: string[]): string | null {
-  // 抖音/小红书 图文+视频：标签在正文内 #tag 格式
-  if ((platform === '抖音' || platform === '小红书') && (ct === 'image_text' || ct === 'video')) {
+  // 抖音/小红书 图文+视频：标签在正文内 #tag 格式（SSOT: schemas/platform-schema.ts）
+  if (usesInlineHashtags(platform, ct)) {
     if (!/#[一-鿿\w]+/.test(content)) {
-      return `${platform}${ct === 'image_text' ? '图文' : '视频'}需要在正文中添加标签（格式：#标签 用空格分隔，如 #美食 #旅行）`
+      return `${platform}${ctLabel(ct)}需要在正文中添加标签（格式：#标签 用空格分隔，如 #美食 #旅行）`;
     }
-    return null
+    return null;
   }
-  // 抖音长文：话题独立字段
-  if (platform === '抖音' && ct === 'article') {
-    if (!tags || tags.length === 0) return '抖音长文需要填写话题（tags 字段，≤5个）'
-    return null
+  // 标签独立字段的平台/类型 — 由 PLATFORM_SCHEMA.maxTags 决定上限
+  const limits = getLimits(platform, ct);
+  if (limits?.maxTags !== undefined) {
+    if (!tags || tags.length === 0) {
+      return `${platform}${ctLabel(ct)}需要填写标签（≤${limits.maxTags}个）`;
+    }
+    if (tags.length > limits.maxTags) {
+      return `${platform}${ctLabel(ct)}标签超过限制（${tags.length}/${limits.maxTags}）`;
+    }
   }
-  // B站视频：标签独立字段
-  if (platform === 'B站' && ct === 'video') {
-    if (!tags || tags.length === 0) return 'B站视频需要填写标签（tags 字段，≤10个）'
-    return null
-  }
-  return null
+  return null;
 }
 
 async function getDraft(draftId: string): Promise<{ draft: DraftData | null; error?: string }> {

@@ -140,12 +140,18 @@ describe("validateDraft abstract limits", () => {
 // ═══════════════════════════════════════════
 
 describe("validateDraft edge cases", () => {
-  it("returns empty for unknown platform", () => {
-    expect(validateDraft("未知平台", "article", "x".repeat(100000))).toHaveLength(0);
+  it("returns _root error for unknown platform", () => {
+    const errs = validateDraft("未知平台", "article", "x".repeat(100000));
+    expect(errs).toHaveLength(1);
+    expect(errs[0].field).toBe("_root");
+    expect(errs[0].message).toMatch(/未知平台/);
   });
 
-  it("returns empty for unknown content type in known platform", () => {
-    expect(validateDraft("小红书", "unknown_type", "x".repeat(100000))).toHaveLength(0);
+  it("returns _root error for unknown content type in known platform", () => {
+    const errs = validateDraft("小红书", "unknown_type", "x".repeat(100000));
+    expect(errs).toHaveLength(1);
+    expect(errs[0].field).toBe("_root");
+    expect(errs[0].message).toMatch(/未知平台/);
   });
 
   it("counts HTML img tags as images", () => {
@@ -185,5 +191,47 @@ describe("validateDraft edge cases", () => {
   it("empty content with minBody constraint triggers error", () => {
     const errors = validateDraft("抖音", "article", "");
     expect(errors.some(e => e.field === "content" && e.message.includes("内容不能为空"))).toBe(true);
+  });
+});
+
+// ═══════════════════════════════════════════
+// Material images array validation
+// ═══════════════════════════════════════════
+
+describe("validateDraft material images array", () => {
+  it("rejects 小红书 image_text with > 18 material IDs", () => {
+    const images = Array.from({ length: 19 }, (_, i) => `img_${i}`);
+    const errors = validateDraft("小红书", "image_text", "正文", undefined, undefined, undefined, images);
+    expect(errors.some(e => e.field === "images" && /图片超过限制.*18/.test(e.message))).toBe(true);
+  });
+
+  it("allows 小红书 image_text with exactly 18 material IDs", () => {
+    const images = Array.from({ length: 18 }, (_, i) => `img_${i}`);
+    const errors = validateDraft("小红书", "image_text", "正文", undefined, undefined, undefined, images);
+    expect(errors.filter(e => e.field === "images")).toHaveLength(0);
+  });
+
+  it("rejects 抖音 image_text with > 35 material IDs", () => {
+    const images = Array.from({ length: 36 }, (_, i) => `img_${i}`);
+    const errors = validateDraft("抖音", "image_text", "正文", undefined, undefined, undefined, images);
+    expect(errors.some(e => e.field === "images" && /图片超过限制.*35/.test(e.message))).toBe(true);
+  });
+
+  it("skips images array check when images is undefined", () => {
+    const errors = validateDraft("小红书", "image_text", "正文");
+    expect(errors.filter(e => e.field === "images")).toHaveLength(0);
+  });
+
+  it("skips images array check for B站 video (no maxImages)", () => {
+    const images = Array.from({ length: 50 }, (_, i) => `img_${i}`);
+    const errors = validateDraft("B站", "video", "正文", undefined, undefined, undefined, images);
+    expect(errors.filter(e => e.field === "images")).toHaveLength(0);
+  });
+
+  it("filters empty strings before counting", () => {
+    // 18 valid + 5 empty = effectively 18, should pass
+    const images = [...Array.from({ length: 18 }, (_, i) => `img_${i}`), "", "", "", "", ""];
+    const errors = validateDraft("小红书", "image_text", "正文", undefined, undefined, undefined, images);
+    expect(errors.filter(e => e.field === "images")).toHaveLength(0);
   });
 });
