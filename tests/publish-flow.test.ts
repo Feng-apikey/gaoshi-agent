@@ -9,6 +9,7 @@ import Database from "better-sqlite3";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
+import * as crypto from "node:crypto";
 
 // ── 在 import 真实模块之前,用 vi.mock 替换网络/浏览器部分 ──
 // 但要保留 dispatch 表 (image_text/video/article) 让 lookup 走通
@@ -71,6 +72,12 @@ vi.mock("../mcp/mcp-client.ts", () => ({
 const tmpRoot = path.join(os.tmpdir(), `gaoshi_publish_e2e_${Date.now()}`);
 const dataDir = path.join(tmpRoot, "data");
 const origCwd = process.cwd();
+
+// 随机 hex id 工厂 — fixture 不能再用 a.repeat(16) 这种"占位"字符串,
+// 既不像真 hex 又容易跟其他 test 文件冲突 (cross-test 跑时 cccccccccccccccc.png 这种文件就会留下)
+function hexId(): string {
+  return crypto.randomBytes(8).toString("hex");
+}
 
 function seedMaterial(id: string, absPath: string) {
   const db = new Database(path.join(dataDir, "gaoshi.db"));
@@ -153,10 +160,13 @@ describe("publish() 端到端 (validateMaterials 阶段)", () => {
     process.chdir(tmpRoot);
 
     // SSOT: 材料 id 必须是 hex 16 字符; fixture 用 crypto.randomBytes(8).hex
-    const imageId = "a".repeat(16);  // 简化: 全 a 作为合法 hex
-    const videoId = "b".repeat(16);
-    const realImagePath = `D:\\gaoshi-pure\\data\\images\\${imageId}.png`;
-    const realVideoPath = `D:\\gaoshi-pure\\data\\videos\\${videoId}.mp4`;
+    // 写文件到 tmpRoot 而不是 D:\gaoshi-pure\data\, 不污染用户真实素材库
+    const imageId = hexId();
+    const videoId = hexId();
+    const realImagePath = path.join(dataDir, "images", `${imageId}.png`);
+    const realVideoPath = path.join(dataDir, "videos", `${videoId}.mp4`);
+    fs.mkdirSync(path.dirname(realImagePath), { recursive: true });
+    fs.mkdirSync(path.dirname(realVideoPath), { recursive: true });
     fs.writeFileSync(realImagePath, "fake-image-content");
     fs.writeFileSync(realVideoPath, "fake-video-content");
 
@@ -185,8 +195,9 @@ describe("publish() 端到端 (validateMaterials 阶段)", () => {
     closeDB();
     process.chdir(tmpRoot);
 
-    const imageId = "c".repeat(16);
-    const realImagePath = `D:\\gaoshi-pure\\data\\images\\${imageId}.png`;
+    const imageId = hexId();
+    const realImagePath = path.join(dataDir, "images", `${imageId}.png`);
+    fs.mkdirSync(path.dirname(realImagePath), { recursive: true });
     fs.writeFileSync(realImagePath, "x");
 
     seedMaterial(imageId, realImagePath);
@@ -211,8 +222,9 @@ describe("publish() 端到端 (validateMaterials 阶段)", () => {
     closeDB();
     process.chdir(tmpRoot);
 
-    const videoId = "d".repeat(16);
-    const realVideoPath = `D:\\gaoshi-pure\\data\\videos\\${videoId}.mp4`;
+    const videoId = hexId();
+    const realVideoPath = path.join(dataDir, "videos", `${videoId}.mp4`);
+    fs.mkdirSync(path.dirname(realVideoPath), { recursive: true });
     fs.writeFileSync(realVideoPath, "x");
 
     seedMaterial(videoId, realVideoPath);
@@ -245,7 +257,7 @@ describe("publish() 端到端 (validateMaterials 阶段)", () => {
       tags: [],
       platform: "抖音",
       contentType: "image_text",
-      images: ["e".repeat(16)],
+      images: [hexId()],
     });
 
     const result = await publish("抖音", "image_text", "draft-missing");
@@ -280,7 +292,7 @@ describe("publish() 端到端 (validateMaterials 阶段)", () => {
       tags: [],
       platform: "抖音",
       contentType: "video",
-      video: "f".repeat(16),
+      video: hexId(),
     });
     const result = await publish("抖音", "video", "draft-no-tag");
     expect(result.success).toBe(false);
@@ -292,9 +304,7 @@ describe("publish() 端到端 (validateMaterials 阶段)", () => {
 // SSOT 防回归: id / path.basename / name 三字段不耦合
 // ═══════════════════════════════════════════
 
-import { syncAndList } from "../storage/materials-sync.ts";
-import { invalidateSyncCache } from "../storage/materials-sync.ts";
-import * as path from "node:path";
+import { syncAndList, invalidateSyncCache } from "../storage/materials-sync.ts";
 
 describe("materials SSOT 防回归", () => {
   it("syncAndList 后所有 id 都是 hex 16 字符", async () => {
