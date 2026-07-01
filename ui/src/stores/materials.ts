@@ -5,21 +5,38 @@ import { fetchMaterials, updateMaterial, deleteMaterial, analyzeMaterial } from 
 interface MaterialsState {
   materials: Material[]
   filter: 'all' | 'image' | 'video' | 'audio' | 'document'
+  searchQuery: string
   uploading: boolean
 }
 
 const state = reactive<MaterialsState>({
   materials: [],
   filter: 'all',
+  searchQuery: '',
   uploading: false,
 })
 
 const analyzing = reactive(new Set<string>())
 
+function matchesQuery(m: Material, q: string): boolean {
+  if (!q) return true
+  const needle = q.toLowerCase()
+  if ((m.name ?? '').toLowerCase().includes(needle)) return true
+  if ((m.description ?? '').toLowerCase().includes(needle)) return true
+  if (Array.isArray(m.tags) && m.tags.some(t => t.toLowerCase().includes(needle))) return true
+  return false
+}
+
 export function useMaterialsStore() {
-  const filtered = computed(() => {
-    if (state.filter === 'all') return state.materials
-    return state.materials.filter(m => m.category === state.filter)
+  // Final visible list: search + category filter.
+  // Source of truth for `materials` stays the full set returned by the server;
+  // search/filter only narrow the rendered view, never mutate cached rows.
+  const displayed = computed(() => {
+    const q = state.searchQuery.trim()
+    return state.materials.filter(m => {
+      if (state.filter !== 'all' && m.category !== state.filter) return false
+      return matchesQuery(m, q)
+    })
   })
 
   async function load() {
@@ -69,5 +86,5 @@ export function useMaterialsStore() {
 
   load()
 
-  return { state, filtered, analyzing, load, rename, updateTags, remove, analyze }
+  return { state, displayed, analyzing, load, rename, updateTags, remove, analyze }
 }

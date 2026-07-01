@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { getDB } from "../../storage/db.ts";
 import { materials, drafts } from "../../storage/schema.ts";
-import { eq } from "drizzle-orm";
+import { eq, like, or } from "drizzle-orm";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { extToMime } from "../../storage/media-types.ts";
@@ -18,9 +18,31 @@ export const materialsRouter = new Hono();
 
 const DATA_DIR = getDataDir();
 
-// GET /api/materials — list all
+// GET /api/materials — list all (optional ?q=xxx: text-search name/tags/description)
 materialsRouter.get("/", (c) => {
-  return c.json(syncAndList().map(transformMaterial));
+  // syncAndList handles orphan cleanup + hash rename reconciliation as a side
+  // effect; we still trigger it before returning any subset, so search results
+  // never include dangling rows or miss re-homed ones.
+  const allRows = syncAndList();
+  const q = c.req.query("q")?.trim() ?? "";
+  if (!q) return c.json(allRows.map(transformMaterial));
+
+  // 文本检索: name / tags(JSON 字符串里的中文字面) / description 任一 LIKE 命中即返回。
+  // 用 SQL LIKE: % 和 _ 是通配符,不在此处转义 (单用户小库,无需 ESCAPE 复杂度)。
+  const pattern = `%${q}%`;
+  const db = getDB();
+  const rows = db
+    .select()
+    .from(materials)
+    .where(
+      or(
+        like(materials.name, pattern),
+        like(materials.tags, pattern),
+        like(materials.description, pattern),
+      ),
+    )
+    .all();
+  return c.json(rows.map(transformMaterial));
 });
 
 // GET /api/materials/:id — get one

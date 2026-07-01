@@ -12,8 +12,9 @@ async function checkOk(res: Response): Promise<any> {
   return res.json()
 }
 
-export async function fetchMaterials(): Promise<Material[]> {
-  const res = await fetch('/api/materials')
+export async function fetchMaterials(q?: string): Promise<Material[]> {
+  const url = q ? `/api/materials?q=${encodeURIComponent(q)}` : '/api/materials'
+  const res = await fetch(url)
   return checkOk(res)
 }
 
