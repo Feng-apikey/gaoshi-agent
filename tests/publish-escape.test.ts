@@ -20,7 +20,7 @@ import { escapeSendKeys } from "../publish/helpers.ts";
 describe("escapeSendKeys", () => {
   describe("反斜杠 (核心 bug fix)", () => {
     it("不翻倍单个反斜杠", () => {
-      const input = "D:\\gaoshi-pure\\data\\images\\gaoshi_img_1781007077381.png";
+      const input = `D:\\test-data\\images\\sub\\fixture_1781007077381.png`;
       const out = escapeSendKeys(input);
       // 输入 4 个反斜杠,输出必须仍然是 4 个
       expect((out.match(/\\/g) || []).length).toBe(4);
@@ -32,13 +32,13 @@ describe("escapeSendKeys", () => {
     });
 
     it("输出字符串等于输入字符串 (无任何特殊字符的路径)", () => {
-      const input = "D:\\gaoshi-pure\\data\\images\\gaoshi_img_1781007077381.png";
+      const input = `D:\\test-data\\images\\sub\\fixture_1781007077381.png`;
       // 不含 SendKeys 特殊字符时,escape 必须是恒等
       expect(escapeSendKeys(input)).toBe(input);
     });
 
     it("输出字符串能直接送到 SendKeys 后,在 Windows 文件对话框里命中真实路径", () => {
-      const absPath = "D:\\gaoshi-pure\\data\\images\\gaoshi_img_1781007077381.png";
+      const absPath = "D:\\test-data\\images\\sub\\fixture_1781007077381.png";
       const escaped = escapeSendKeys(absPath);
       // 直接拼到 PowerShell 单引号字符串里 — 必须一字不差
       const psCmd = `[System.Windows.Forms.SendKeys]::SendWait('${escaped}')`;
@@ -74,16 +74,18 @@ describe("escapeSendKeys", () => {
     });
   });
 
-  describe("实际素材文件名 (回归保护)", () => {
-    it("gaoshi 真实图片路径 escape 后不引入任何多余反斜杠", () => {
-      const realPath = "D:\\gaoshi-pure\\data\\images\\gaoshi_img_1781007077381.png";
+  describe("合成素材路径 (回归保护)", () => {
+    // 不用 D:\gaoshi-pure\data\,避免误导未来读者以为这是真盘路径。
+    // escape 测试只关心字符串变换,文件存在与否无关。
+    it("合成图片路径 escape 后不引入任何多余反斜杠", () => {
+      const realPath = "D:\\test-data\\images\\sub\\fixture_1781007077381.png";
       const out = escapeSendKeys(realPath);
-      // SendKeys 注入后,Windows 文件对话框收到的字符串必须 === 磁盘真实路径
+      // SendKeys 注入后,Windows 文件对话框收到的字符串必须 === 磁盘路径(字面)
       expect(out).toBe(realPath);
     });
 
-    it("gaoshi 真实视频路径 escape 后不引入任何多余反斜杠", () => {
-      const realPath = "D:\\gaoshi-pure\\data\\videos\\test-video.mp4";
+    it("合成视频路径 escape 后不引入任何多余反斜杠", () => {
+      const realPath = "D:\\test-data\\videos\\fixture-video.mp4";
       const out = escapeSendKeys(realPath);
       expect(out).toBe(realPath);
     });

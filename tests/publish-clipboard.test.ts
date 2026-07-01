@@ -33,7 +33,8 @@ function getClipboard(): string {
       `powershell -Command "Add-Type -AssemblyName PresentationCore; [System.Windows.Clipboard]::GetText()"`,
       { encoding: "utf8", timeout: 5000 }
     ).trim();
-  } catch {
+  } catch (err) {
+    console.warn("[clipboard-test] getClipboard failed:", err);
     return "";
   }
 }
@@ -52,7 +53,10 @@ function setClipboard(text: string): void {
         { encoding: "utf8", timeout: 5000 }
       );
     }
-  } catch {}
+  } catch (err) {
+    // 失败也要冒泡到 stderr — 不能默默吃,否则用户粘出"测试残留"还以为灵异事件。
+    console.warn("[clipboard-test] setClipboard failed:", err);
+  }
 }
 
 // 复用 helpers.ts 里真实生产代码的 PS 命令拼接(skipTitleCheck=true 跳过
@@ -79,13 +83,25 @@ describeIfWin("uploadFile Stage 3: 剪贴板 + Ctrl+V 链路", () => {
   // 再恢复一次 — 即使 vitest 中途超时/失败/被 SIGKILL, 最后一次正常退出的
   // test 的 afterAll 也会兜底恢复一次. 双保险.
   afterEach(() => {
-    try { setClipboard(originalClipboard); } catch {}
+    try { setClipboard(originalClipboard); } catch (err) {
+      console.warn("[clipboard-test] afterEach restore failed:", err);
+    }
+  });
+
+  // 终极兜底: Node 进程退出时(包括 Ctrl+C / SIGTERM)再尝试恢复一次。
+  // SIGKILL 抓不到,但 SIGTERM / 正常 exit 都能拦下。
+  // 注意 process.on('exit') 不能跑 async — 这里用 execSync (同步) 才能可靠执行。
+  process.on("exit", () => {
+    try { setClipboard(originalClipboard); } catch { /* 兜底兜底,吞掉 */ }
   });
 
   it("真实素材路径: 写剪贴板 → 读回 → 字符级一致", () => {
     // 注意: buildUploadCmd 末尾会按 $prev 恢复剪贴板(空 → Clear), 所以不能在
     // buildUploadCmd 之后 GetText (会拿到空). 改成直接测 SetText/GetText 链路.
-    const realPath = "D:\\gaoshi-pure\\data\\images\\gaoshi_img_1781007077381.png";
+    // 合成测试路径 — 不要硬编码 D:\gaoshi-pure\data\,避免测试中途崩溃时
+    // 把用户真盘路径泄漏到 Windows 剪贴板,然后被粘进输入框。
+    // D:\test-data\ 是不存在的合成前缀,跟真数据目录零耦合。
+    const realPath = "D:\\test-data\\images\\gaoshi_img_1781007077381.png";
     const psQuoted = realPath.replace(/'/g, "''");
     const psScript = `Add-Type -AssemblyName PresentationCore; [System.Windows.Clipboard]::SetText('${psQuoted}'); $after = [System.Windows.Clipboard]::GetText(); Write-Output "AFTER=$after"`;
     const cmd = encodedPowerShellCmd(psScript);
@@ -98,7 +114,7 @@ describeIfWin("uploadFile Stage 3: 剪贴板 + Ctrl+V 链路", () => {
   }, 20_000);
 
   it("含反斜杠的路径: 剪贴板读回后反斜杠数量 = 输入数量", () => {
-    const realPath = "D:\\gaoshi-pure\\data\\videos\\promo\\gaoshi-promo\\test.png";
+    const realPath = "D:\\test-data\\videos\\promo\\gaoshi-promo\\test.png";
     const inBackslashes = (realPath.match(/\\/g) || []).length;
 
     // PS 单引号字符串里 $cb 直接 Write-Output 一次,在 Node 端匹配反斜杠数量
@@ -121,7 +137,7 @@ describeIfWin("uploadFile Stage 3: 剪贴板 + Ctrl+V 链路", () => {
     });
 
     // 跑完整 uploadFile Stage 3
-    const realPath = "D:\\gaoshi-pure\\data\\images\\test.png";
+    const realPath = "D:\\test-data\\images\\test.png";
     execSync(buildClipboardCmd(realPath), {
       encoding: "utf8",
       timeout: 15000,
@@ -138,7 +154,7 @@ describeIfWin("uploadFile Stage 3: 剪贴板 + Ctrl+V 链路", () => {
     setClipboard(userContent);
 
     // 跑 uploadFile Stage 3
-    const realPath = "D:\\gaoshi-pure\\data\\videos\\test-video.mp4";
+    const realPath = "D:\\test-data\\videos\\test-video.mp4";
     execSync(buildClipboardCmd(realPath), {
       encoding: "utf8",
       timeout: 15000,
@@ -169,7 +185,10 @@ describeIfWin("uploadFile Stage 3: 剪贴板 + Ctrl+V 链路", () => {
     const userContent = "USER-CLIPBOARD-MARKER-preAborted";
     setClipboard(userContent);
 
-    const realPath = "D:\\gaoshi-pure\\data\\images\\gaoshi_img_1781007077381.png";
+    // 合成测试路径 — 不要硬编码 D:\gaoshi-pure\data\,避免测试中途崩溃时
+    // 把用户真盘路径泄漏到 Windows 剪贴板,然后被粘进输入框。
+    // D:\test-data\ 是不存在的合成前缀,跟真数据目录零耦合。
+    const realPath = "D:\\test-data\\images\\gaoshi_img_1781007077381.png";
     const cmd = encodedPowerShellCmd(buildUploadCmd(realPath, { dialogWait: 50, shortWait: 50 }));
 
     execSync(cmd, { encoding: "utf8", timeout: 15000 });
